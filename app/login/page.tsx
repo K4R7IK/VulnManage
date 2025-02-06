@@ -1,0 +1,123 @@
+// app/login/page.tsx
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  TextInput,
+  PasswordInput,
+  Button,
+  Checkbox,
+  Container,
+  Title,
+  Paper,
+  Group,
+  Text,
+  Center,
+  Alert,
+} from "@mantine/core";
+import { useForm } from "@mantine/form";
+import { IconAlertCircle } from "@tabler/icons-react";
+import { useAuth } from "@/hooks/useAuth";
+
+interface LoginForm {
+  email: string;
+  password: string;
+  rememberMe: boolean;
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { login, isLoading, error, user } = useAuth();
+
+  const form = useForm<LoginForm>({
+    initialValues: {
+      email: "",
+      password: "",
+      rememberMe: false,
+    },
+    validate: {
+      email: (value) => (/^\S+@\S+\.\S+$/.test(value) ? null : "Invalid email"),
+      password: (value) =>
+        value.length >= 6 ? null : "Password must be at least 6 characters",
+    },
+  });
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.replace("/dashboard");
+    }
+  }, [user, router]);
+
+  const handleSubmit = async (values: LoginForm) => {
+    try {
+      await login(values.email, values.password);
+      router.push("/dashboard");
+    } catch (error) {
+      // Error handling is managed by the useAuth hook
+      console.error("Login error:", error);
+    }
+  };
+
+  return (
+    <Container size={420} my={40}>
+      <Center>
+        <Title>Welcome</Title>
+      </Center>
+
+      <Text c="dimmed" size="sm" ta="center" mt={5}>
+        Enter your credentials to log in
+      </Text>
+
+      <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+        {error && (
+          <Alert
+            icon={<IconAlertCircle size={16} />}
+            title="Login Failed"
+            color="red"
+            mb="md"
+          >
+            {error}
+          </Alert>
+        )}
+
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <TextInput
+            label="Email"
+            placeholder="you@example.com"
+            {...form.getInputProps("email")}
+            required
+          />
+
+          <PasswordInput
+            label="Password"
+            placeholder="Your password"
+            mt="md"
+            {...form.getInputProps("password")}
+            required
+          />
+
+          <Group justify="space-between" mt="md">
+            <Checkbox
+              label="Remember me"
+              {...form.getInputProps("rememberMe", { type: "checkbox" })}
+            />
+            <Text
+              size="sm"
+              c="blue"
+              style={{ cursor: "pointer" }}
+              onClick={() => router.push("/forgot-password")}
+            >
+              Forgot password?
+            </Text>
+          </Group>
+
+          <Button fullWidth mt="xl" type="submit" loading={isLoading}>
+            Sign in
+          </Button>
+        </form>
+      </Paper>
+    </Container>
+  );
+}

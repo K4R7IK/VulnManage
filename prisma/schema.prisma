@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RiskLevel {
+  None
+  Low
+  Medium
+  High
+  Critical
+}
+
+model Company {
+  id                   Int                   @id @default(autoincrement())
+  name                 String                @unique
+  vulnerabilities      Vulnerability[]
+  vulnerabilitySummary VulnerabilitySummary?
+  users                User[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+}
+
+model Vulnerability {
+  id              String    @id @default(ulid())
+  assetIp         String
+  assetOS         String?
+  port            Int?
+  protocol        String?
+  title           String
+  cveId           String[]
+  description     String[]
+  riskLevel       RiskLevel
+  cvssScore       Float?
+  impact          String
+  recommendations String
+  references      String[]
+  pluginOutput    String?
+  quarters        String[]
+  isResolved      Boolean   @default(false)
+  uniqueHash      String    @unique
+  companyId       Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, uniqueHash])
+  @@index([riskLevel])
+  @@index([assetIp])
+}
+
+model VulnerabilitySummary {
+  id              String   @id @default(ulid())
+  companyId       Int      @unique
+  quarter         String
+  osSummary       Json
+  riskSummary     Json
+  topDevices      Json
+  resolvedCount   Int
+  unresolvedCount Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  company         Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, quarter])
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(User)
+  companyId Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id])
+}
+
+enum UserRole {
+  Admin
+  User
+}
