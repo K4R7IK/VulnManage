@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import fs from "fs/promises";
-import { parseCsv } from "@/utils/importCsv";
+import { importCsv } from "@/utils/importCsv";
 import os from "os";
 import { Readable } from "stream";
-import { z } from "zod"; // Add input validation
+import { z } from "zod";
 
 // Move to separate config/constants file
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -15,6 +15,7 @@ const ALLOWED_FILE_TYPES = ["text/csv", "application/vnd.ms-excel"];
 interface FormFields {
   quarter: string;
   companyId: number;
+  creationDate: string;
 }
 
 interface UploadedFile {
@@ -27,6 +28,7 @@ interface UploadedFile {
 const uploadSchema = z.object({
   quarter: z.string().min(1, "Quarter is required"),
   companyId: z.number().min(1, "Company ID is required"),
+  creationDate: z.string().min(1, "Creation date is required"),
 });
 
 // Get JWT secret with type safety
@@ -83,6 +85,9 @@ async function parseForm(req: Request): Promise<{
             ? fields.companyId[0]
             : fields.companyId,
         ),
+        creationDate: Array.isArray(fields.creationDate)
+          ? fields.creationDate[0]
+          : fields.creationDate,
       };
 
       resolve({ fields: formattedFields, files });
@@ -133,10 +138,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Process CSV file
-    await parseCsv(file.filepath, fields.quarter, Number(fields.companyId), {
-      captureSkippedRows: true,
+    // Process CSV file, passing the custom creation date from the form as an option
+    console.log(
+      file.filepath,
+      fields.quarter,
+      Number(fields.companyId),
+      fields.creationDate,
+    );
+    await importCsv(file.filepath, fields.quarter, Number(fields.companyId), {
+      captureSkippedRows: false,
       calculateSummary: true,
+      customCreatedAt: new Date(fields.creationDate),
     });
 
     // Cleanup: Delete temp file
@@ -150,7 +162,6 @@ export async function POST(req: Request) {
     );
   } catch (error) {
     console.error("Error processing file:", error);
-
     const errorMessage =
       error instanceof Error ? error.message : "Error processing file";
     return NextResponse.json({ error: errorMessage }, { status: 500 });

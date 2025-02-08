@@ -22,13 +22,13 @@ enum RiskLevel {
 }
 
 model Company {
-  id                   Int                   @id @default(autoincrement())
-  name                 String                @unique
+  id                   Int                    @id @default(autoincrement())
+  name                 String                 @unique
   vulnerabilities      Vulnerability[]
-  vulnerabilitySummary VulnerabilitySummary?
+  vulnerabilitySummary VulnerabilitySummary[]
   users                User[]
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 }
 
 model Vulnerability {
@@ -39,7 +39,7 @@ model Vulnerability {
   protocol        String?
   title           String
   cveId           String[]
-  description     String[]
+  description     String
   riskLevel       RiskLevel
   cvssScore       Float?
   impact          String
@@ -58,17 +58,19 @@ model Vulnerability {
   @@unique([companyId, uniqueHash])
   @@index([riskLevel])
   @@index([assetIp])
+  @@index([quarters])
 }
 
 model VulnerabilitySummary {
   id              String   @id @default(ulid())
-  companyId       Int      @unique
+  companyId       Int
   quarter         String
   osSummary       Json
   riskSummary     Json
   topDevices      Json
   resolvedCount   Int
   unresolvedCount Int
+  newCount        Int
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   company         Company  @relation(fields: [companyId], references: [id])
@@ -91,5 +93,6 @@ model User {
 
 enum UserRole {
   Admin
+  Editor
   User
 }

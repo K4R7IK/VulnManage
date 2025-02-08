@@ -2,16 +2,19 @@
 import { useState, useEffect } from "react";
 import {
   Paper,
+  Title,
   Text,
   Select,
   TextInput,
   FileInput,
   Button,
   Stack,
-  Notification,
   Flex,
   LoadingOverlay,
+  Center,
 } from "@mantine/core";
+import { DateInput } from "@mantine/dates";
+import { showNotification } from "@mantine/notifications";
 import { IconCheck, IconX } from "@tabler/icons-react";
 
 // Types
@@ -23,6 +26,7 @@ interface Company {
 interface UploadFormData {
   companyId: string;
   quarter: string;
+  creationDate: Date | null;
   file: File | null;
 }
 
@@ -31,11 +35,10 @@ export default function UploadPage() {
   const [formData, setFormData] = useState<UploadFormData>({
     companyId: "",
     quarter: "",
+    creationDate: null,
     file: null,
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchCompanies() {
@@ -47,7 +50,13 @@ export default function UploadPage() {
         setCompanies(data);
       } catch (err) {
         console.error(err);
-        setError("Failed to load companies");
+        showNotification({
+          title: "Error",
+          message: "Failed to load companies",
+          color: "red",
+          icon: <IconX size={20} />,
+          position: "bottom-right",
+        });
       } finally {
         setIsLoading(false);
       }
@@ -71,26 +80,53 @@ export default function UploadPage() {
     try {
       // Validate inputs
       if (!formData.companyId) {
-        setError("Please select a company.");
+        showNotification({
+          title: "Error",
+          message: "Please select a company.",
+          color: "red",
+          icon: <IconX size={20} />,
+          position: "bottom-right",
+        });
         return;
       }
       if (!formData.quarter) {
-        setError("Quarter is required.");
+        showNotification({
+          title: "Error",
+          message: "Quarter is required.",
+          color: "red",
+          icon: <IconX size={20} />,
+          position: "bottom-right",
+        });
+        return;
+      }
+      if (!formData.creationDate) {
+        showNotification({
+          title: "Error",
+          message: "Creation date is required.",
+          color: "red",
+          icon: <IconX size={20} />,
+          position: "bottom-right",
+        });
         return;
       }
       const fileError = validateFile(formData.file);
       if (fileError) {
-        setError(fileError);
+        showNotification({
+          title: "Error",
+          message: fileError,
+          color: "red",
+          icon: <IconX size={20} />,
+          position: "bottom-right",
+        });
         return;
       }
 
       setIsLoading(true);
-      setError(null);
-      setSuccess(null);
 
       const uploadData = new FormData();
       uploadData.append("companyId", formData.companyId);
-      uploadData.append("quarter", formData.quarter); // Allow any string for quarter
+      uploadData.append("quarter", formData.quarter);
+      uploadData.append("creationDate", formData.creationDate.toISOString());
       uploadData.append("file", formData.file as File);
 
       console.log(uploadData);
@@ -105,80 +141,65 @@ export default function UploadPage() {
         throw new Error(data.error || "Upload failed.");
       }
 
-      setSuccess("File uploaded successfully!");
+      showNotification({
+        title: "Success",
+        message: "File uploaded successfully!",
+        color: "green",
+        icon: <IconCheck size={20} />,
+        position: "bottom-right",
+      });
 
       // Reset form
       setFormData({
         companyId: "",
         quarter: "",
+        creationDate: null,
         file: null,
       });
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "File upload failed.");
+      showNotification({
+        title: "Error uploading the file",
+        message: err instanceof Error ? err.message : "File upload failed.",
+        color: "red",
+        icon: <IconX size={20} />,
+        position: "bottom-right",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Flex justify="center" align="center" mih="100vh" p="md">
-      <Paper
-        withBorder
-        shadow="md"
-        p="xl"
-        radius="md"
-        style={{ width: 500 }}
-        pos="relative"
-      >
+    <Flex justify="center" align="center" p="md">
+      <Paper withBorder shadow="md" p="xl" radius="md" style={{ width: "45%", maxWidth: "701px" }}>
         <LoadingOverlay visible={isLoading} />
 
-        <Text size="xl" fw={700} mb="md">
-          Upload Vulnerability Report
-        </Text>
-
-        {error && (
-          <Notification
-            icon={<IconX size="1.2rem" />}
-            color="red"
-            title="Error"
-            mb="md"
-            onClose={() => setError(null)}
-          >
-            {error}
-          </Notification>
-        )}
-
-        {success && (
-          <Notification
-            icon={<IconCheck size="1.2rem" />}
-            color="green"
-            title="Success"
-            mb="md"
-            onClose={() => setSuccess(null)}
-          >
-            {success}
-          </Notification>
-        )}
-
+        <Center>
+          <Title size="h2" fw={700} mb="md">
+            Upload Vulnerability Report
+          </Title>
+        </Center>
         <Stack>
-          {/* Company Selection */}
           <Select
+            variant="filled"
             label="Select Company"
             placeholder="Choose a company"
             data={companies.map((company) => ({
               value: company.id.toString(),
               label: company.name,
             }))}
-            searchable
             value={formData.companyId}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, companyId: value || "" }))
             }
             required
+            checkIconPosition="right"
+            comboboxProps={{ shadow: "md" }}
           />
 
           <TextInput
+            variant="filled"
             label="Quarter"
             placeholder="Enter any quarter name"
             value={formData.quarter}
@@ -191,8 +212,23 @@ export default function UploadPage() {
             required
           />
 
-          {/* File Upload */}
+          <DateInput
+            variant="filled"
+            label="Date"
+            placeholder="Set Creation Date"
+            clearable
+            maxDate={new Date()}
+            value={formData.creationDate}
+            onChange={(date) =>
+              setFormData((prev) => ({
+                ...prev,
+                creationDate: date,
+              }))
+            }
+          />
+
           <FileInput
+            variant="filled"
             label="Upload File"
             placeholder="Select .csv or .xlsx file"
             accept=".csv,.xlsx"
@@ -201,8 +237,8 @@ export default function UploadPage() {
             required
           />
 
-          <Text size="sm" c="dimmed">
-            Accepted formats: .csv, .xlsx (max 10MB)
+          <Text size="xs" c="dimmed">
+            Accepted formats: .csv, .xlsx (max 40MB)
           </Text>
 
           {/* Upload Button */}

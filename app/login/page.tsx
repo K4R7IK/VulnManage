@@ -8,17 +8,19 @@ import {
   PasswordInput,
   Button,
   Checkbox,
-  Container,
   Title,
   Paper,
   Group,
   Text,
   Center,
   Alert,
+  Flex,
+  Divider,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useAuth } from "@/hooks/useAuth";
+import Link from "next/link";
 
 interface LoginForm {
   email: string;
@@ -61,16 +63,16 @@ export default function LoginPage() {
   };
 
   return (
-    <Container size={420} my={40}>
-      <Center>
-        <Title>Welcome</Title>
-      </Center>
+    <Flex direction="column" justify="center" align="center" mih="100vh">
+      <Paper shadow="xl" p={30} radius="md" w="30%" maw="500px" withBorder>
+        <Center>
+          <Title size="h1">Welcome</Title>
+        </Center>
 
-      <Text c="dimmed" size="sm" ta="center" mt={5}>
-        Enter your credentials to log in
-      </Text>
+        <Text c="dimmed" size="sm" ta="center" mt={5}>
+          Enter your credentials to log in
+        </Text>
 
-      <Paper withBorder shadow="md" p={30} mt={30} radius="md">
         {error && (
           <Alert
             icon={<IconAlertCircle size={16} />}
@@ -100,7 +102,7 @@ export default function LoginPage() {
 
           <Group justify="space-between" mt="md">
             <Checkbox
-              label="Remember me"
+              label="Longer session"
               {...form.getInputProps("rememberMe", { type: "checkbox" })}
             />
             <Text
@@ -117,7 +119,17 @@ export default function LoginPage() {
             Sign in
           </Button>
         </form>
+
+        <Button
+          fullWidth
+          variant="light"
+          mt="sm"
+          component={Link}
+          href="/register"
+        >
+          Register
+        </Button>
       </Paper>
-    </Container>
+    </Flex>
   );
 }

@@ -2,7 +2,7 @@
 CREATE TYPE "RiskLevel" AS ENUM ('None', 'Low', 'Medium', 'High', 'Critical');
 
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('Admin', 'User');
+CREATE TYPE "UserRole" AS ENUM ('Admin', 'Editor', 'User');
 
 -- CreateTable
 CREATE TABLE "Company" (
@@ -23,7 +23,7 @@ CREATE TABLE "Vulnerability" (
     "protocol" TEXT,
     "title" TEXT NOT NULL,
     "cveId" TEXT[],
-    "description" TEXT[],
+    "description" TEXT NOT NULL,
     "riskLevel" "RiskLevel" NOT NULL,
     "cvssScore" DOUBLE PRECISION,
     "impact" TEXT NOT NULL,
@@ -83,10 +83,10 @@ CREATE INDEX "Vulnerability_riskLevel_idx" ON "Vulnerability"("riskLevel");
 CREATE INDEX "Vulnerability_assetIp_idx" ON "Vulnerability"("assetIp");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Vulnerability_companyId_uniqueHash_key" ON "Vulnerability"("companyId", "uniqueHash");
+CREATE INDEX "Vulnerability_quarters_idx" ON "Vulnerability"("quarters");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "VulnerabilitySummary_companyId_key" ON "VulnerabilitySummary"("companyId");
+CREATE UNIQUE INDEX "Vulnerability_companyId_uniqueHash_key" ON "Vulnerability"("companyId", "uniqueHash");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "VulnerabilitySummary_companyId_quarter_key" ON "VulnerabilitySummary"("companyId", "quarter");
