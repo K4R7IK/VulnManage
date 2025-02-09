@@ -8,10 +8,15 @@ import {
   Table,
   Text,
   Loader,
-  Select,
+  SegmentedControl,
   Accordion,
+  Flex,
+  Group,
+  Title,
+  Button,
 } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
+import Link from "next/link";
 
 interface User {
   id: string;
@@ -112,18 +117,20 @@ export default function DashboardPage() {
   }, [selectedCompanyId]);
 
   if (loading) {
-    return <Loader />;
+    return (
+      <Flex direction="column" justify="center" align="center" mih="100vh">
+        <Loader type="dots" size="xl" />
+      </Flex>
+    );
   }
 
   // Prepare chart data for risk summary.
-  // Expecting riskSummary to be an object: { Low: number, Medium: number, High: number, Critical: number }
   const riskChartData = summaries.map((summary) => ({
     quarter: summary.quarter,
     ...summary.riskSummary,
   }));
 
   // Prepare chart data for OS summary.
-  // Expecting osSummary to be an object, e.g., { Unknown: number, Windows: number, ... }
   const osChartData = summaries.map((summary) => ({
     quarter: summary.quarter,
     ...summary.osSummary,
@@ -131,26 +138,29 @@ export default function DashboardPage() {
 
   return (
     <Container fluid>
-      <Text size="xl" fw={700} mb="md">
-        Overview
-      </Text>
+      <Group justify="space-between" my="sm">
+        <Title size="h2" fw={700} mb="md">
+          Summary Overview
+        </Title>
 
-      {user && user.role === "Admin" && companies.length > 0 && (
-        <Select
-          placeholder="Choose a company"
-          data={companies.map((comp) => ({
-            value: comp.id.toString(),
-            label: comp.name,
-          }))}
-          checkIconPosition="right"
-          value={selectedCompanyId ? selectedCompanyId.toString() : ""}
-          onChange={(value) => setSelectedCompanyId(Number(value))}
-          mb="md"
-        />
-      )}
-
+        {user && user.role === "Admin" && companies.length > 0 && (
+          <SegmentedControl
+            data={companies.map((comp) => ({
+              value: comp.id.toString(),
+              label: comp.name,
+            }))}
+            value={selectedCompanyId ? selectedCompanyId.toString() : ""}
+            onChange={(value) => setSelectedCompanyId(Number(value))}
+            withItemsBorders
+            radius="md"
+          />
+        )}
+        <Button component={Link} href="/dashboard/details" variant="light">
+          View Table
+        </Button>
+      </Group>
       <Grid gutter="md">
-        <Grid.Col>
+        <Grid.Col span={{ base: 12, xl: 6 }}>
           <Card withBorder p="md" shadow="md">
             <Text size="lg" mb="sm" fw={600}>
               Risk Summary by Quarter
@@ -170,7 +180,7 @@ export default function DashboardPage() {
         </Grid.Col>
 
         {/* OS Summary Chart */}
-        <Grid.Col>
+        <Grid.Col span={{ base: 12, xl: 6 }}>
           <Card withBorder p="md" shadow="md">
             <Text size="lg" mb="sm" fw={600}>
               OS Summary by Quarter
@@ -212,7 +222,7 @@ export default function DashboardPage() {
         </Grid.Col>
         <Grid.Col>
           <Card withBorder shadow="md" p="md">
-            <Text size="lg" mb="sm">
+            <Text size="lg" fw={600} mb="sm">
               Top Vulnerable Devices by Quarter
             </Text>
             <Accordion variant="separated">

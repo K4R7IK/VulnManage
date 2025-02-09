@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell, Text, Button, Menu } from "@mantine/core";
+import { AppShell, Text, Button, Menu, Image } from "@mantine/core";
 import {
   IconUser,
   IconLogout,
-  IconMail,
-  IconAdjustmentsAlt,
   IconMenu2,
   IconUpload,
+  IconMail,
+  IconAdjustmentsAlt,
+  IconUsers,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -54,9 +55,7 @@ export default function DashboardLayout({
           alignItems: "center",
         }}
       >
-        <Text size="xl" fw={600} component={Link} href="/dashboard">
-          Dashboard
-        </Text>
+        <Image src="/etek.svg" radius="md" fit="cover" w="auto" />
 
         <Menu trigger="click-hover" openDelay={50} closeDelay={100}>
           <Menu.Target>
@@ -65,13 +64,25 @@ export default function DashboardLayout({
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
-            <Menu.Item
-              leftSection={<IconUpload size={16} />}
-              component={Link}
-              href="/dashboard/upload"
-            >
-              Upload Data
-            </Menu.Item>
+            {user?.role === "Admin" && (
+              <Menu.Item
+                leftSection={<IconUpload size={16} />}
+                component={Link}
+                href="/dashboard/upload"
+              >
+                Upload Data
+              </Menu.Item>
+            )}
+
+            {user?.role === "Admin" && (
+              <Menu.Item
+                leftSection={<IconUsers size={16} />}
+                component={Link}
+                href="/dashboard/users"
+              >
+                Manage Users
+              </Menu.Item>
+            )}
             <Menu.Label>User Info</Menu.Label>
             <Menu.Item leftSection={<IconUser size={16} />}>
               {user?.name}

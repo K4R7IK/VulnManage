@@ -15,7 +15,6 @@ import {
   Center,
   Alert,
   Flex,
-  Divider,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";

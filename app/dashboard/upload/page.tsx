@@ -229,12 +229,13 @@ export default function UploadPage() {
 
           <FileInput
             variant="filled"
-            label="Upload File"
+            label="Select File"
             placeholder="Select .csv or .xlsx file"
             accept=".csv,.xlsx"
             value={formData.file}
             onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
             required
+            clearable
           />
 
           <Text size="xs" c="dimmed">

@@ -91,6 +91,15 @@ model User {
   company Company? @relation(fields: [companyId], references: [id])
 }
 
+model RegisterToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  email     String   @unique
+  companyId Int?     
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 enum UserRole {
   Admin
   Editor
