@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 export async function POST() {
   try {
@@ -7,14 +8,7 @@ export async function POST() {
       { status: 200 }
     );
 
-    // Correctly clearing the cookie by setting it to an empty value and expiring it immediately
-    response.cookies.set("token", "", {
-      path: "/",
-      expires: new Date(0), // Expire immediately
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+    (await cookies()).delete('token'); 
 
     return response;
   } catch (error) {

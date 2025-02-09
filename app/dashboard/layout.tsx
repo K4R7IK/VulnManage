@@ -26,10 +26,12 @@ export default function DashboardLayout({
     email: string;
     role: string;
   } | null>(null);
+
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "GET", credentials: "include" });
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     router.push("/login");
   };
+
   useEffect(() => {
     const fetchUser = async () => {
       try {
