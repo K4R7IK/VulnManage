@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
 export async function GET(request: Request) {
   try {
@@ -11,15 +11,15 @@ export async function GET(request: Request) {
     const summaries = await prisma.vulnerabilitySummary.findMany({
       where: whereClause,
       orderBy: {
-        quarter: 'desc'
+        quarter: "desc",
       },
-      take: 10
+      take: 10,
     });
 
     return NextResponse.json(summaries);
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to fetch vulnerability summaries' },
+      { error: "Failed to fetch vulnerability summaries" },
       { status: 500 }
     );
   }

@@ -14,7 +14,10 @@ async function verifyAuth() {
     const tokenCookie = cookieStore.get("token");
 
     if (!tokenCookie) {
-      return { authenticated: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+      return {
+        authenticated: false,
+        response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      };
     }
 
     const token = tokenCookie.value;
@@ -22,12 +25,21 @@ async function verifyAuth() {
     const { payload } = await jwtVerify(token, secret);
 
     if (!payload || !payload.email) {
-      return { authenticated: false, response: NextResponse.json({ error: "Invalid token" }, { status: 401 }) };
+      return {
+        authenticated: false,
+        response: NextResponse.json(
+          { error: "Invalid token" },
+          { status: 401 }
+        ),
+      };
     }
 
     return { authenticated: true, user: payload };
   } catch (error) {
-    return { authenticated: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      authenticated: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 }
 
@@ -50,7 +62,10 @@ export async function GET() {
     return NextResponse.json(users);
   } catch (error) {
     console.error("Error fetching users:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -64,10 +79,13 @@ export async function POST(req: Request) {
 
     // Validate required fields (password is now required)
     if (!name || !email || !password || !role) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
-    const hashedPassword = await bcrypt.hash(password,10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // In a real application, remember to hash the password before storing it.
     const newUser = await prisma.user.create({
@@ -83,7 +101,10 @@ export async function POST(req: Request) {
     return NextResponse.json(newUser, { status: 201 });
   } catch (error) {
     console.error("Error creating user:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -96,18 +117,29 @@ export async function PUT(req: Request) {
     const { id, name, email, role, companyId } = await req.json();
 
     if (!id) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 }
+      );
     }
 
     const updatedUser = await prisma.user.update({
       where: { id: Number(id) },
-      data: { name, email, role, companyId: companyId ? Number(companyId) : null },
+      data: {
+        name,
+        email,
+        role,
+        companyId: companyId ? Number(companyId) : null,
+      },
     });
 
     return NextResponse.json(updatedUser);
   } catch (error) {
     console.error("Error updating user:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -121,7 +153,10 @@ export async function DELETE(req: Request) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 }
+      );
     }
 
     await prisma.user.delete({ where: { id: Number(id) } });
@@ -129,6 +164,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

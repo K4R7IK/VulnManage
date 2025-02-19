@@ -1,4 +1,3 @@
-// hooks/useAuth.ts
 import { create } from "zustand";
 
 interface User {
@@ -8,19 +7,20 @@ interface User {
   role: string;
 }
 
-interface AuthState {
+type AuthState = {
   user: User | null;
   isLoading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-}
+};
 
-export const useAuth = create<AuthState>((set) => ({
+const LOGIN_FAILED_ERROR = "Login failed";
+
+export const useAuth = create<AuthState>()((set) => ({
   user: null,
   isLoading: false,
   error: null,
-
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
     try {
@@ -31,31 +31,34 @@ export const useAuth = create<AuthState>((set) => ({
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.message || "Login failed");
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || LOGIN_FAILED_ERROR);
       }
 
-      set({ user: data.user, isLoading: false });
+      const data = await response.json();
+      set({ user: data.user, isLoading: false, error: null });
     } catch (error) {
       set({
-        error: error instanceof Error ? error.message : "Login failed",
+        error: error instanceof Error ? error.message : LOGIN_FAILED_ERROR,
         isLoading: false,
       });
       throw error;
     }
   },
-
   logout: async () => {
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
       });
-      set({ user: null });
+      set({ user: null, isLoading: false, error: null });
     } catch (error) {
-      console.error("Logout error:", error);
+      set({
+        error: error instanceof Error ? error.message : "Logout failed",
+        isLoading: false,
+      });
+      throw error; // Add this to maintain consistent error handling
     }
   },
 }));

@@ -28,7 +28,10 @@ export async function GET(request: Request) {
     const companyId = url.searchParams.get("companyId");
 
     if (!companyId) {
-      return NextResponse.json({ error: "Company ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Company ID is required" },
+        { status: 400 }
+      );
     }
 
     const vuln = await prisma.vulnerability.findMany({
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
     console.error("Error fetching vulnerabilities:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

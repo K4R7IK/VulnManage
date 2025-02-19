@@ -35,7 +35,7 @@ export async function GET() {
     console.error("Error fetching companies:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

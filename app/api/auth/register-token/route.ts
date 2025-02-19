@@ -27,7 +27,7 @@ async function verifyAuth() {
         authenticated: false,
         response: NextResponse.json(
           { error: "Invalid token" },
-          { status: 401 },
+          { status: 401 }
         ),
       };
     }
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to create token" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
