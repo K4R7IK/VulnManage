@@ -32,7 +32,7 @@ export const useAuth = create<AuthState>()((set) => ({
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
+        const data = await response.json();
         throw new Error(data.message || LOGIN_FAILED_ERROR);
       }
 

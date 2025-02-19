@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { jwtVerify } from "jose";
 import fs from "fs/promises";
 import { importCsv } from "@/utils/importCsv";
 import os from "os";
 import { Readable } from "stream";
 import { z } from "zod";
+import { verifyAuth } from "@/utils/verifyAuth";
 
 // Move to separate config/constants file
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -30,12 +29,6 @@ const uploadSchema = z.object({
   companyId: z.number().min(1, "Company ID is required"),
   creationDate: z.string().min(1, "Creation date is required"),
 });
-
-// Get JWT secret with type safety
-const SECRET_KEY = process.env.JWT_SECRET;
-if (!SECRET_KEY) {
-  throw new Error("JWT_SECRET environment variable is not set");
-}
 
 export const config = {
   api: {
@@ -69,57 +62,47 @@ async function parseForm(req: Request): Promise<{
   const stream = await requestToStream(req);
 
   return new Promise((resolve, reject) => {
-    form.parse(stream, (err, fields, files) => {
-      if (err) {
-        reject(err);
-        return;
+    form.parse(
+      stream,
+      (
+        err: any,
+        fields: {
+          quarter: string;
+          companyId: string;
+          creationDate: string;
+        },
+        files: any
+      ) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        // Transform fields to expected format
+        const formattedFields: FormFields = {
+          quarter: Array.isArray(fields.quarter)
+            ? fields.quarter[0]
+            : fields.quarter,
+          companyId: Number(
+            Array.isArray(fields.companyId)
+              ? fields.companyId[0]
+              : fields.companyId
+          ),
+          creationDate: Array.isArray(fields.creationDate)
+            ? fields.creationDate[0]
+            : fields.creationDate,
+        };
+
+        resolve({ fields: formattedFields, files });
       }
-
-      // Transform fields to expected format
-      const formattedFields: FormFields = {
-        quarter: Array.isArray(fields.quarter)
-          ? fields.quarter[0]
-          : fields.quarter,
-        companyId: Number(
-          Array.isArray(fields.companyId)
-            ? fields.companyId[0]
-            : fields.companyId,
-        ),
-        creationDate: Array.isArray(fields.creationDate)
-          ? fields.creationDate[0]
-          : fields.creationDate,
-      };
-
-      resolve({ fields: formattedFields, files });
-    });
+    );
   });
-}
-
-async function verifyToken(token: string) {
-  try {
-    const secret = new TextEncoder().encode(SECRET_KEY);
-    const { payload } = await jwtVerify(token, secret);
-
-    if (!payload.email) {
-      throw new Error("Invalid token payload");
-    }
-
-    return payload;
-  } catch (error) {
-    throw new Error("Invalid token");
-  }
 }
 
 export async function POST(req: Request) {
   try {
-    // Authentication
-    const cookieStore = await cookies();
-    const tokenCookie = cookieStore.get("token");
-    if (!tokenCookie) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    await verifyToken(tokenCookie.value);
+    const auth = await verifyAuth();
+    if (!auth.authenticated) return auth.response;
 
     // Parse form data
     const { fields, files } = await parseForm(req);
@@ -129,7 +112,7 @@ export async function POST(req: Request) {
     if (!validationResult.success) {
       return NextResponse.json(
         { error: validationResult.error.message },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -143,7 +126,7 @@ export async function POST(req: Request) {
       file.filepath,
       fields.quarter,
       Number(fields.companyId),
-      fields.creationDate,
+      fields.creationDate
     );
     await importCsv(file.filepath, fields.quarter, Number(fields.companyId), {
       captureSkippedRows: false,
@@ -158,7 +141,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       { message: "File processed successfully" },
-      { status: 200 },
+      { status: 200 }
     );
   } catch (error) {
     console.error("Error processing file:", error);

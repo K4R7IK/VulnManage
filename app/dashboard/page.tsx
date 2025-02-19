@@ -153,6 +153,7 @@ export default function DashboardPage() {
             onChange={(value) => setSelectedCompanyId(Number(value))}
             withItemsBorders
             radius="md"
+            fullWidth
           />
         )}
         <Button component={Link} href="/dashboard/details" variant="light">

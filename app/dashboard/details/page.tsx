@@ -15,7 +15,11 @@ import {
   Button,
   Select,
 } from "@mantine/core";
-import { IconSearch, IconTableExport } from "@tabler/icons-react";
+import {
+  IconSearch,
+  IconTableExport,
+  IconCaretUpFilled,
+} from "@tabler/icons-react";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Papa from "papaparse";
 import { saveAs } from "file-saver";
@@ -72,6 +76,7 @@ export default function DetailsPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [userRole, setUserRole] = useState<string | null>(null);
 
+  // Fetch user data
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -88,6 +93,7 @@ export default function DetailsPage() {
     fetchUser();
   }, []);
 
+  // Fetch companies for admin
   useEffect(() => {
     const fetchCompanies = async () => {
       if (userRole === "Admin") {
@@ -109,7 +115,6 @@ export default function DetailsPage() {
       if (companyId) {
         try {
           setIsLoading(true);
-          // Include credentials to send cookies along with the request
           const res = await fetch(`/api/vuln?companyId=${companyId}`, {
             credentials: "include",
           });
@@ -134,21 +139,26 @@ export default function DetailsPage() {
     fetchVulnerabilities();
   }, [companyId]);
 
+  // Filter vulnerabilities based on selected filters
   const baseFilteredVulnerabilities = useMemo(() => {
-    return vulnerabilities?.filter((vuln) => {
+    if (!vulnerabilities) return [];
+
+    return vulnerabilities.filter((vuln) => {
       const matchesRisk =
         riskLevels.length === 0 || riskLevels.includes(vuln.riskLevel);
       const matchesQuarter =
         quarters.length === 0 ||
-        vuln.quarters?.some((q) => quarters.includes(q));
+        quarters.some((quarter) => vuln.quarters?.includes(quarter));
       const matchesIp =
         assetIps.length === 0 || assetIps.includes(vuln.assetIp);
       const matchesPort =
         ports.length === 0 || ports.includes(String(vuln.port));
+
       return matchesRisk && matchesQuarter && matchesIp && matchesPort;
     });
   }, [vulnerabilities, riskLevels, quarters, assetIps, ports]);
 
+  // Get filter options based on current filters
   const getFilterOptions = useMemo(() => {
     if (!vulnerabilities)
       return {
@@ -158,83 +168,75 @@ export default function DetailsPage() {
         ports: [],
       };
 
-    // Helper function to get available options based on current filters
-    const getAvailableOptions = (
-      field: keyof Vulnerability,
-      currentFilter: string[]
-    ) => {
-      const tempVulns = vulnerabilities.filter((vuln) => {
+    // Function to filter vulnerabilities based on all criteria except the one being populated
+    const getFilteredOptions = (excludeField: string) => {
+      return vulnerabilities.filter((vuln) => {
         const matchesRisk =
+          excludeField === "riskLevels" ||
           riskLevels.length === 0 ||
-          (field !== "riskLevel" && riskLevels.includes(vuln.riskLevel));
+          riskLevels.includes(vuln.riskLevel);
+
         const matchesQuarter =
+          excludeField === "quarters" ||
           quarters.length === 0 ||
-          (field !== "quarters" &&
-            vuln.quarters?.some((q) => quarters.includes(q)));
+          quarters.some((quarter) => vuln.quarters?.includes(quarter));
+
         const matchesIp =
+          excludeField === "assetIps" ||
           assetIps.length === 0 ||
-          (field !== "assetIp" && assetIps.includes(vuln.assetIp));
+          assetIps.includes(vuln.assetIp);
+
         const matchesPort =
+          excludeField === "ports" ||
           ports.length === 0 ||
-          (field !== "port" && ports.includes(String(vuln.port)));
+          ports.includes(String(vuln.port));
 
         return matchesRisk && matchesQuarter && matchesIp && matchesPort;
       });
-
-      return tempVulns;
     };
 
-    // Get available options for each filter
-    const riskLevelOptions = Array.from(
-      new Set(
-        getAvailableOptions("riskLevel", riskLevels).map((v) => v.riskLevel)
-      )
-    ).sort((a, b) => {
-      const riskOrder = ["Critical", "High", "Medium", "Low"];
-      const indexA = riskOrder.indexOf(a);
-      const indexB = riskOrder.indexOf(b);
-      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-      if (indexA !== -1) return -1;
-      if (indexB !== -1) return 1;
-      return a.localeCompare(b);
-    });
-
-    const quarterOptions = Array.from(
-      new Set(
-        getAvailableOptions("quarters", quarters).flatMap(
-          (v) => v.quarters || []
-        )
-      )
-    ).sort((a, b) => {
-      const prefixA = a.match(/^[A-Za-z]+/)?.[0] || "";
-      const prefixB = b.match(/^[A-Za-z]+/)?.[0] || "";
-      const numA = parseInt(a.match(/\d+/)?.[0] || "0");
-      const numB = parseInt(b.match(/\d+/)?.[0] || "0");
-      if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
-      return numA - numB;
-    });
-
-    const assetIpOptions = Array.from(
-      new Set(getAvailableOptions("assetIp", assetIps).map((v) => v.assetIp))
-    );
-
-    const portOptions = Array.from(
-      new Set(getAvailableOptions("port", ports).map((v) => String(v.port)))
-    );
-
+    // Get available options for each filter based on other active filters
     return {
-      riskLevels: riskLevelOptions,
-      quarters: quarterOptions,
-      assetIps: assetIpOptions,
-      ports: portOptions,
+      riskLevels: Array.from(
+        new Set(getFilteredOptions("riskLevels").map((v) => v.riskLevel))
+      ).sort((a, b) => {
+        const riskOrder = ["Critical", "High", "Medium", "Low"];
+        const indexA = riskOrder.indexOf(a);
+        const indexB = riskOrder.indexOf(b);
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.localeCompare(b);
+      }),
+      quarters: Array.from(
+        new Set(getFilteredOptions("quarters").flatMap((v) => v.quarters || []))
+      ).sort((a, b) => {
+        const [yearA, quarterA] = a.split("Q").map(Number);
+        const [yearB, quarterB] = b.split("Q").map(Number);
+        return yearA !== yearB ? yearA - yearB : quarterA - quarterB;
+      }),
+      assetIps: Array.from(
+        new Set(getFilteredOptions("assetIps").map((v) => v.assetIp))
+      ),
+      ports: Array.from(
+        new Set(getFilteredOptions("ports").map((v) => String(v.port)))
+      ),
     };
   }, [vulnerabilities, riskLevels, quarters, assetIps, ports]);
+
+  // Filter vulnerabilities based on search query
+  const filteredVulnerabilities = useMemo(() => {
+    return baseFilteredVulnerabilities.filter(
+      (vuln) =>
+        searchQuery === "" ||
+        vuln.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [baseFilteredVulnerabilities, searchQuery]);
 
   // Sorting handlers
   const handleSort = useCallback(
     (field: string) => {
       if (sortField === field) {
-        // Add this condition to clear sorting on third click
         if (sortDirection === "desc") {
           setSortField(null);
           setSortDirection("asc");
@@ -248,15 +250,6 @@ export default function DetailsPage() {
     },
     [sortField, sortDirection]
   );
-  // Memoized table rows
-  // Filter vulnerabilities based on selected filters and search query
-  const filteredVulnerabilities = useMemo(() => {
-    return baseFilteredVulnerabilities?.filter(
-      (vuln) =>
-        searchQuery === "" ||
-        vuln.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [baseFilteredVulnerabilities, searchQuery]);
 
   // Sort vulnerabilities
   const sortedVulnerabilities = useMemo(() => {
@@ -268,26 +261,22 @@ export default function DetailsPage() {
       switch (sortField) {
         case "title":
           return modifier * a.title.localeCompare(b.title);
-
         case "age":
           return (
             modifier *
             (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           );
-
         case "risk": {
           const riskOrder = ["Critical", "High", "Medium", "Low"];
           const riskA = riskOrder.indexOf(a.riskLevel);
           const riskB = riskOrder.indexOf(b.riskLevel);
           return modifier * (riskA - riskB);
         }
-
         case "resolved":
           return (
             modifier *
             (a.isResolved === b.isResolved ? 0 : a.isResolved ? 1 : -1)
           );
-
         default:
           return 0;
       }
@@ -322,7 +311,7 @@ export default function DetailsPage() {
     setSelectedVuln(null);
   }, []);
 
-  // Function to handle CSV export
+  // Export to CSV
   const handleExportCSV = useCallback(() => {
     if (!filteredVulnerabilities) return;
 
@@ -347,17 +336,25 @@ export default function DetailsPage() {
 
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-
-    const now = new Date();
-    const filename = `vulnerabilities_${now
+    const filename = `vulnerabilities_${new Date()
       .toISOString()
       .replace(/[:.]/g, "-")}.csv`;
-
     saveAs(blob, filename);
-  }, [filteredVulnerabilities]);
+  }, [filteredVulnerabilities, getTimeDifference]);
 
   return (
-    <Flex direction="column" gap="md">
+    <Flex direction="column" gap="md" pos="relative">
+      <Button
+        rightSection={<IconCaretUpFilled size={16} />}
+        pos="fixed"
+        right="20px"
+        bottom="20px"
+        radius="lg"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      >
+        Top
+      </Button>
+
       <Grid miw="100%">
         <Grid.Col span={8}>
           <TextInput
@@ -387,16 +384,21 @@ export default function DetailsPage() {
             fullWidth
             onClick={handleExportCSV}
             leftSection={<IconTableExport size={16} />}
+            disabled={!filteredVulnerabilities?.length}
           >
             Export CSV
           </Button>
         </GridCol>
       </Grid>
+
       <Grid miw="100%">
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Risk Levels"
-            data={getFilterOptions.riskLevels}
+            data={getFilterOptions.riskLevels.map((level) => ({
+              value: level,
+              label: level,
+            }))}
             value={riskLevels}
             onChange={setRiskLevels}
             searchable
@@ -408,7 +410,10 @@ export default function DetailsPage() {
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Time Periods"
-            data={getFilterOptions.quarters}
+            data={getFilterOptions.quarters.map((quarter) => ({
+              value: quarter,
+              label: quarter,
+            }))}
             value={quarters}
             onChange={setQuarters}
             searchable
@@ -420,7 +425,10 @@ export default function DetailsPage() {
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Asset IP"
-            data={getFilterOptions.assetIps}
+            data={getFilterOptions.assetIps.map((ip) => ({
+              value: ip,
+              label: ip,
+            }))}
             value={assetIps}
             onChange={setAssetIps}
             searchable
@@ -432,7 +440,10 @@ export default function DetailsPage() {
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Ports"
-            data={getFilterOptions.ports}
+            data={getFilterOptions.ports.map((port) => ({
+              value: port,
+              label: port,
+            }))}
             value={ports}
             onChange={setPorts}
             searchable
@@ -460,7 +471,9 @@ export default function DetailsPage() {
       {error ? (
         <Text c="red">{error}</Text>
       ) : isLoading ? (
-        <Loader size="lg" />
+        <Flex justify="center">
+          <Loader size="lg" type="dots" />
+        </Flex>
       ) : filteredVulnerabilities?.length ? (
         <Table highlightOnHover>
           <Table.Thead>

@@ -59,16 +59,6 @@ export default function DashboardLayout({
         }}
       >
         <Group>
-          {window.location.pathname !== "/dashboard" && (
-            <Button
-              variant="subtle"
-              color="black"
-              radius="sm"
-              onClick={() => router.push("/dashboard")}
-            >
-              <IconArrowLeft size={20} />
-            </Button>
-          )}
           <Image src="/etek.svg" radius="md" fit="cover" w="auto" />
         </Group>
         <Menu trigger="click-hover" openDelay={50} closeDelay={100}>
