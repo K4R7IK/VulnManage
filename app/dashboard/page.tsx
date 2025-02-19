@@ -46,7 +46,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
-    null,
+    null
   );
   const [summaries, setSummaries] = useState<VulnerabilitySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +102,7 @@ export default function DashboardPage() {
         try {
           setLoading(true);
           const res = await fetch(
-            `/api/vulnsum?companyId=${selectedCompanyId}`,
+            `/api/vulnsum?companyId=${selectedCompanyId}`
           );
           const data = await res.json();
           setSummaries(data);

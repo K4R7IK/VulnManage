@@ -12,6 +12,7 @@ import {
   Center,
   Title,
 } from "@mantine/core";
+import { redirect } from "next/navigation";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -32,7 +33,8 @@ export default function RegisterPage() {
       if (!res.ok) throw new Error(data.error || "Failed to register");
 
       setSuccess("Registration successful! You can now log in.");
-    } catch (error) {
+      redirect("/login");
+    } catch (error:any) {
       setError(error.message);
     }
   };

@@ -13,10 +13,16 @@ import {
   Title,
   Loader,
   Notification,
+  Select,
 } from "@mantine/core";
-import { IconPlus, IconEdit, IconTrash, IconX, IconCopy } from "@tabler/icons-react";
+import {
+  IconPlus,
+  IconEdit,
+  IconTrash,
+  IconX,
+  IconCopy,
+} from "@tabler/icons-react";
 
-// User and Company Types
 interface User {
   id: number;
   name: string;
@@ -36,22 +42,25 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // States for managing Add/Edit User modal
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState<Partial<User>>({
+  // Extend formData to include a password field
+  const [formData, setFormData] = useState<
+    Partial<User & { password: string }>
+  >({
     name: "",
     email: "",
     role: "User",
     companyId: undefined,
+    password: "",
   });
 
-  // States for Register Token modal
+  // States for Register Token modal (unchanged)
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [registerEmail, setRegisterEmail] = useState("");
+  const [registerCompanyId, setRegisterCompanyId] = useState<string>("");
   const [registerToken, setRegisterToken] = useState("");
 
-  // Fetch users and companies
   useEffect(() => {
     async function fetchData() {
       try {
@@ -66,7 +75,9 @@ export default function UserManagementPage() {
         const usersData = await usersRes.json();
         setUsers(usersData);
 
-        const companiesRes = await fetch("/api/companies", { credentials: "include" });
+        const companiesRes = await fetch("/api/companies", {
+          credentials: "include",
+        });
         const companiesData = await companiesRes.json();
         setCompanies(companiesData);
       } catch (error) {
@@ -78,27 +89,47 @@ export default function UserManagementPage() {
     fetchData();
   }, []);
 
-  // Handle opening user modal (Add/Edit)
   const openUserModal = (user?: User) => {
     setEditingUser(user || null);
-    setFormData(user || { name: "", email: "", role: "User", companyId: undefined });
+    if (user) {
+      setFormData({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        companyId: user.companyId,
+        password: "", // Leave password empty during edit
+      });
+    } else {
+      setFormData({
+        name: "",
+        email: "",
+        role: "User",
+        companyId: undefined,
+        password: "",
+      });
+    }
     setUserModalOpen(true);
   };
 
-  // Handle input changes for Add/Edit user modal
-  const handleChange = (field: keyof User, value: any) => {
+  const handleChange = (
+    field: keyof (User & { password: string }),
+    value: any
+  ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Handle form submission (Add/Edit user)
   const handleSubmitUser = async () => {
     try {
       const method = editingUser ? "PUT" : "POST";
+      const bodyData = editingUser
+        ? { ...formData, id: editingUser.id }
+        : formData;
       const res = await fetch("/api/users", {
         method,
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(formData),
+        body: JSON.stringify(bodyData),
       });
 
       if (res.status === 401) {
@@ -111,17 +142,26 @@ export default function UserManagementPage() {
       const updatedUser = await res.json();
       setUsers((prev) =>
         editingUser
-          ? prev.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+          ? prev.map((user) =>
+              user.id === updatedUser.id ? updatedUser : user
+            )
           : [...prev, updatedUser]
       );
 
       setUserModalOpen(false);
+      setEditingUser(null);
+      setFormData({
+        name: "",
+        email: "",
+        role: "User",
+        companyId: undefined,
+        password: "",
+      });
     } catch (error) {
       setError("Error saving user.");
     }
   };
 
-  // Handle delete user
   const handleDeleteUser = async (userId: number) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
     try {
@@ -143,14 +183,16 @@ export default function UserManagementPage() {
     }
   };
 
-  // Generate register token
   const generateToken = async () => {
     try {
       const res = await fetch("/api/auth/register-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: registerEmail }),
+        body: JSON.stringify({
+          email: registerEmail,
+          companyId: parseInt(registerCompanyId),
+        }),
       });
 
       if (!res.ok) throw new Error("Failed to generate token");
@@ -160,6 +202,13 @@ export default function UserManagementPage() {
     } catch (error) {
       setError("Error generating token.");
     }
+  };
+
+  const handleCloseRegisterModal = () => {
+    setRegisterModalOpen(false);
+    setRegisterEmail("");
+    setRegisterCompanyId("");
+    setRegisterToken("");
   };
 
   if (loading)
@@ -176,21 +225,110 @@ export default function UserManagementPage() {
       </Title>
 
       {error && (
-        <Notification color="red" icon={<IconX />} onClose={() => setError(null)} mb="md">
+        <Notification
+          color="red"
+          icon={<IconX />}
+          onClose={() => setError(null)}
+          mb="md"
+        >
           {error}
         </Notification>
       )}
 
-      {/* Buttons */}
       <Group mb="md">
         <Button leftSection={<IconPlus />} onClick={() => openUserModal()}>
           Add User
         </Button>
-        <Button onClick={() => setRegisterModalOpen(true)}>Register New User</Button>
+        <Button onClick={() => setRegisterModalOpen(true)}>
+          Register New User
+        </Button>
       </Group>
 
+      {/* Add/Edit User Modal */}
+      <Modal
+        opened={userModalOpen}
+        onClose={() => {
+          setUserModalOpen(false);
+          setEditingUser(null);
+          setFormData({
+            name: "",
+            email: "",
+            role: "User",
+            companyId: undefined,
+            password: "",
+          });
+        }}
+        title={editingUser ? "Edit User" : "Add User"}
+      >
+        <TextInput
+          label="Name"
+          value={formData.name}
+          onChange={(e) => handleChange("name", e.target.value)}
+          required
+          mb="sm"
+        />
+        <TextInput
+          label="Email"
+          value={formData.email}
+          onChange={(e) => handleChange("email", e.target.value)}
+          required
+          mb="sm"
+        />
+        {/* Show password input only when adding a new user */}
+        {!editingUser && (
+          <TextInput
+            label="Password"
+            type="password"
+            value={formData.password || ""}
+            onChange={(e) => handleChange("password", e.target.value)}
+            required
+            mb="sm"
+          />
+        )}
+        <Select
+          label="Role"
+          data={[
+            { value: "User", label: "User" },
+            { value: "Admin", label: "Admin" },
+          ]}
+          value={formData.role}
+          onChange={(value) => handleChange("role", value)}
+          required
+          mb="sm"
+        />
+        <Select
+          label="Company"
+          data={companies.map((company) => ({
+            value: company.id.toString(),
+            label: company.name,
+          }))}
+          value={formData.companyId?.toString() || ""}
+          onChange={(value) =>
+            handleChange("companyId", value ? parseInt(value) : undefined)
+          }
+          required
+          mb="md"
+        />
+        <Button
+          onClick={handleSubmitUser}
+          disabled={
+            !formData.name ||
+            !formData.email ||
+            !formData.role ||
+            !formData.companyId ||
+            (!editingUser && !formData.password)
+          }
+        >
+          {editingUser ? "Save Changes" : "Add User"}
+        </Button>
+      </Modal>
+
       {/* Register User Modal */}
-      <Modal opened={registerModalOpen} onClose={() => setRegisterModalOpen(false)} title="Register New User">
+      <Modal
+        opened={registerModalOpen}
+        onClose={handleCloseRegisterModal}
+        title="Register New User"
+      >
         <TextInput
           label="User Email"
           value={registerEmail}
@@ -198,7 +336,25 @@ export default function UserManagementPage() {
           required
           mb="sm"
         />
-        <Button onClick={generateToken}>Generate Token</Button>
+        <Select
+          label="Select Company"
+          placeholder="Choose a company"
+          data={companies.map((company) => ({
+            value: company.id.toString(),
+            label: company.name,
+          }))}
+          value={registerCompanyId}
+          onChange={(value) => setRegisterCompanyId(value || "")}
+          required
+          mb="md"
+        />
+        <Button
+          onClick={generateToken}
+          disabled={!registerEmail || !registerCompanyId}
+          mb="md"
+        >
+          Generate Token
+        </Button>
         {registerToken && (
           <Notification>
             Token: {registerToken}{" "}
@@ -231,14 +387,24 @@ export default function UserManagementPage() {
                 <Table.Td>{user.email}</Table.Td>
                 <Table.Td>{user.role}</Table.Td>
                 <Table.Td>
-                  {companies.find((c) => c.id === user.companyId)?.name || "N/A"}
+                  {companies.find((c) => c.id === user.companyId)?.name ||
+                    "N/A"}
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
-                    <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => openUserModal(user)}>
+                    <Button
+                      variant="light"
+                      leftSection={<IconEdit size={16} />}
+                      onClick={() => openUserModal(user)}
+                    >
                       Edit
                     </Button>
-                    <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={() => handleDeleteUser(user.id)}>
+                    <Button
+                      variant="light"
+                      color="red"
+                      leftSection={<IconTrash size={16} />}
+                      onClick={() => handleDeleteUser(user.id)}
+                    >
                       Delete
                     </Button>
                   </Group>

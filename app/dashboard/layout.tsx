@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell, Text, Button, Menu, Image } from "@mantine/core";
+import { AppShell, Text, Button, Menu, Image, Group } from "@mantine/core";
 import {
   IconUser,
   IconLogout,
@@ -10,6 +10,7 @@ import {
   IconMail,
   IconAdjustmentsAlt,
   IconUsers,
+  IconArrowLeft,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -57,8 +58,19 @@ export default function DashboardLayout({
           alignItems: "center",
         }}
       >
-        <Image src="/etek.svg" radius="md" fit="cover" w="auto" />
-
+        <Group>
+          {window.location.pathname !== "/dashboard" && (
+            <Button
+              variant="subtle"
+              color="black"
+              radius="sm"
+              onClick={() => router.push("/dashboard")}
+            >
+              <IconArrowLeft size={20} />
+            </Button>
+          )}
+          <Image src="/etek.svg" radius="md" fit="cover" w="auto" />
+        </Group>
         <Menu trigger="click-hover" openDelay={50} closeDelay={100}>
           <Menu.Target>
             <Button variant="subtle" color="black" radius="sm">

@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 const SECRET_KEY = process.env.JWT_SECRET; // Ensure this is set in env
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const cookieStore = await cookies();
     const tokenCookie = cookieStore.get("token");
@@ -24,11 +24,20 @@ export async function GET() {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const vuln = await prisma.vulnerability.findMany();
+    const url = new URL(request.url);
+    const companyId = url.searchParams.get("companyId");
+
+    if (!companyId) {
+      return NextResponse.json({ error: "Company ID is required" }, { status: 400 });
+    }
+
+    const vuln = await prisma.vulnerability.findMany({
+      where: { companyId: Number(companyId) },
+    });
 
     return NextResponse.json(vuln);
   } catch (error) {
-    console.error("Error fetching companies:", error);
+    console.error("Error fetching vulnerabilities:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

@@ -1,7 +1,9 @@
+// app/api/user/route.ts
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import bcrypt from "bcrypt";
 
 const SECRET_KEY = process.env.JWT_SECRET; // Ensure this is set in .env
 
@@ -60,15 +62,19 @@ export async function POST(req: Request) {
   try {
     const { name, email, password, role, companyId } = await req.json();
 
+    // Validate required fields (password is now required)
     if (!name || !email || !password || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const hashedPassword = await bcrypt.hash(password,10);
+
+    // In a real application, remember to hash the password before storing it.
     const newUser = await prisma.user.create({
       data: {
         name,
         email,
-        password, // Ensure this is hashed in a real-world scenario
+        password: hashedPassword,
         role,
         companyId: companyId ? Number(companyId) : null,
       },
