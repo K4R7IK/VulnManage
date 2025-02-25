@@ -8,7 +8,7 @@ import { verifyAuth } from "@/utils/verifyAuth";
 import prisma from "@/lib/prisma";
 
 // Move to separate config/constants file
-const MAX_FILE_SIZE = 40 * 1024 * 1024; // 40MB
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 const ALLOWED_FILE_TYPES = ["text/csv", "application/vnd.ms-excel"];
 
 // Define types for better type safety

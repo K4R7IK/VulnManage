@@ -14,6 +14,10 @@ function getPrismaClient() {
       },
     },
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    transactionOptions: {
+      maxWait: 10000,
+      timeout: 120000,
+    },
   });
   return client;
 }

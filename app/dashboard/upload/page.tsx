@@ -122,8 +122,8 @@ export default function UploadPage() {
 
   const validateFile = (file: File | null) => {
     if (!file) return "File is required.";
-    if (file.size > 40 * 1024 * 1024)
-      return "File size must be less than 40MB.";
+    if (file.size > 500 * 1024 * 1024)
+      return "File size must be less than 500MB.";
     const validExtensions = [".csv", ".xlsx"];
     if (!validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))) {
       return "Only .csv and .xlsx files are allowed.";

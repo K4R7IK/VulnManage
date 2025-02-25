@@ -16,6 +16,7 @@ type CsvRow = {
   Description: string;
   Solution: string;
   "See Also": string;
+  "Plugin Output": string;
 };
 
 type ImportParams = {
@@ -53,6 +54,7 @@ function generateVulnHash(vuln: {
   recommendations: string;
   references: string[];
   companyId: number;
+  pluginOutput?: string | null;
 }): string {
   const data = JSON.stringify({
     ...vuln,
@@ -82,7 +84,7 @@ function mapCsvRowToVulnerability(
     impact: row.Synopsis, // Changed from synopsis to match CSV header
     recommendations: row.Solution, // Changed from solution to match CSV header
     references: row["See Also"] ? [row["See Also"]] : [], // Changed from seeAlso to match CSV header
-    pluginOutput: null,
+    pluginOutput: row["Plugin Output"] || null, // Changed from pluginOutput to match CSV header
     companyId: params.companyId,
     uniqueHash: "", // Will be set after object creation
   };
