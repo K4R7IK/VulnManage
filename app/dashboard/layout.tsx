@@ -1,19 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell, Text, Button, Menu, Image, Group } from "@mantine/core";
+import {
+  AppShell,
+  Button,
+  Text,
+  Image,
+  Burger,
+  Stack,
+  Popover,
+  Group,
+  Avatar,
+  NavLink,
+} from "@mantine/core";
 import {
   IconUser,
   IconLogout,
-  IconMenu2,
   IconUpload,
   IconMail,
-  IconAdjustmentsAlt,
   IconUsers,
-  IconArrowLeft,
+  IconListDetails,
+  IconLayoutDashboard,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useDisclosure } from "@mantine/hooks";
 
 export default function DashboardLayout({
   children,
@@ -21,6 +32,9 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
+  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure();
+  const [opened, { close, open }] = useDisclosure(false);
   const [user, setUser] = useState<{
     userId: number;
     name: string;
@@ -49,7 +63,15 @@ export default function DashboardLayout({
   }, []);
 
   return (
-    <AppShell header={{ height: 60 }} padding="md">
+    <AppShell
+      header={{ height: 60 }}
+      padding="md"
+      navbar={{
+        width: 250,
+        breakpoint: "sm",
+        collapsed: { mobile: !mobileOpened, desktop: !desktopOpened },
+      }}
+    >
       <AppShell.Header
         p="sm"
         style={{
@@ -59,57 +81,129 @@ export default function DashboardLayout({
         }}
       >
         <Group>
-          <Image src="/etek.svg" radius="md" fit="cover" w="auto" />
+          <Burger
+            opened={mobileOpened}
+            onClick={toggleMobile}
+            hiddenFrom="sm"
+            size="sm"
+          />
+          <Burger
+            opened={desktopOpened}
+            onClick={toggleDesktop}
+            visibleFrom="sm"
+            size="sm"
+          />
+          <Popover
+            width={250}
+            position="bottom-start"
+            offset={4}
+            withArrow
+            arrowPosition="side"
+            arrowOffset={5}
+            opened={opened}
+          >
+            <Popover.Target>
+              <Avatar
+                key={user?.name}
+                name={user?.name}
+                color="initials"
+                allowedInitialsColors={["blue", "red", "purple"]}
+                onMouseEnter={open}
+                onMouseLeave={close}
+              />
+            </Popover.Target>
+            <Popover.Dropdown>
+              <Button
+                component={Text}
+                rightSection={<IconUser size={14} />}
+                variant="transparent"
+                color="black"
+                fullWidth
+                size="compact-sm"
+                justify="space-between"
+              >
+                {user?.name}
+              </Button>
+              <Button
+                component={Text}
+                rightSection={<IconMail size={14} />}
+                variant="transparent"
+                color="black"
+                fullWidth
+                size="compact-sm"
+                justify="space-between"
+              >
+                {user?.email}
+              </Button>
+            </Popover.Dropdown>
+          </Popover>
         </Group>
-        <Menu trigger="click-hover" openDelay={50} closeDelay={100}>
-          <Menu.Target>
-            <Button variant="subtle" color="black" radius="sm">
-              <IconMenu2 size={20} />
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {user?.role === "Admin" && (
-              <Menu.Item
-                leftSection={<IconUpload size={16} />}
-                component={Link}
-                href="/dashboard/upload"
-              >
-                Upload Data
-              </Menu.Item>
-            )}
-
-            {user?.role === "Admin" && (
-              <Menu.Item
-                leftSection={<IconUsers size={16} />}
-                component={Link}
-                href="/dashboard/users"
-              >
-                Manage Users
-              </Menu.Item>
-            )}
-            <Menu.Label>User Info</Menu.Label>
-            <Menu.Item leftSection={<IconUser size={16} />}>
-              {user?.name}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconMail size={16} />}>
-              {user?.email}
-            </Menu.Item>
-            <Menu.Item leftSection={<IconAdjustmentsAlt size={16} />}>
-              {user?.role}
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item
-              leftSection={<IconLogout size={16} />}
-              color="red"
-              onClick={handleLogout}
-            >
-              Logout
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        <Image
+          src="/etek.svg"
+          radius="xs"
+          fit="cover"
+          w="100"
+          alt="Company Logo"
+        />
       </AppShell.Header>
+      <AppShell.Navbar p="md">
+        <Stack mih="100%" justify="space-between">
+          <Stack gap={0}>
+            <NavLink
+              variant="subtle"
+              color="black"
+              leftSection={<IconLayoutDashboard size={16} />}
+              component="a"
+              href="/dashboard"
+              label="Dashboard"
+              active
+            ></NavLink>
 
-      {/* Main Content */}
+            <NavLink
+              variant="subtle"
+              color="black"
+              leftSection={<IconListDetails size={16} />}
+              component="a"
+              href="/dashboard/details"
+              active
+              label="View Table"
+            ></NavLink>
+          </Stack>
+          <Stack gap={0}>
+            {user?.role === "Admin" && (
+              <NavLink
+                variant="subtle"
+                color="black"
+                leftSection={<IconUpload size={16} />}
+                component="a"
+                href="/dashboard/upload"
+                label="Upload Data"
+                active
+              ></NavLink>
+            )}
+            {user?.role === "Admin" && (
+              <NavLink
+                color="black"
+                leftSection={<IconUsers size={16} />}
+                component="a"
+                href="/dashboard/users"
+                label="User Mangement"
+                variant="subtle"
+                active
+              ></NavLink>
+            )}
+            <NavLink
+              onClick={handleLogout}
+              leftSection={<IconLogout size={16} />}
+              label="Logout"
+              color="red"
+              key="Logout"
+              active
+            ></NavLink>
+          </Stack>
+        </Stack>
+      </AppShell.Navbar>
+
       <AppShell.Main>{children}</AppShell.Main>
     </AppShell>
   );

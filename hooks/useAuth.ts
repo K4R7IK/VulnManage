@@ -58,7 +58,7 @@ export const useAuth = create<AuthState>()((set) => ({
         error: error instanceof Error ? error.message : "Logout failed",
         isLoading: false,
       });
-      throw error; // Add this to maintain consistent error handling
+      throw error;
     }
   },
 }));

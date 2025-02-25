@@ -11,37 +11,42 @@ import {
   Stack,
   Loader,
   TextInput,
-  GridCol,
   Button,
   Select,
+  Affix,
+  Transition,
+  Tabs,
+  Group,
+  Pagination,
 } from "@mantine/core";
-import {
-  IconSearch,
-  IconTableExport,
-  IconCaretUpFilled,
-} from "@tabler/icons-react";
-import { useEffect, useState, useCallback, useMemo } from "react";
-import Papa from "papaparse";
-import { saveAs } from "file-saver";
+import { IconSearch, IconTableExport, IconArrowUp } from "@tabler/icons-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useWindowScroll } from "@mantine/hooks";
+
+interface VulnerabilityQuarter {
+  id: string;
+  quarter: string;
+  isResolved: boolean;
+  quarterDate: string;
+}
 
 interface Vulnerability {
   id: string;
   assetIp: string;
-  assestOS: string;
-  port: number;
-  protocol: string;
+  assetOS: string | null;
+  port: number | null;
+  protocol: string | null;
   title: string;
   cveId: string[];
   description: string;
-  riskLevel: string;
-  cvssScore: number;
+  riskLevel: "None" | "Low" | "Medium" | "High" | "Critical";
+  cvssScore: number | null;
   impact: string;
   recommendations: string;
   references: string[];
-  pluginOutput: string;
-  quarters: string[];
-  isResolved: boolean;
+  pluginOutput: string | null;
   createdAt: string;
+  quarterData: VulnerabilityQuarter[];
 }
 
 interface Company {
@@ -49,241 +54,249 @@ interface Company {
   name: string;
 }
 
+interface FilterOptions {
+  riskLevels: string[];
+  assetIps: string[];
+  ports: number[];
+  quarters: string[];
+}
+
+interface PaginationData {
+  currentPage: number;
+  itemsPerPage: number;
+  totalPages: number;
+  totalItems: number;
+}
 export default function DetailsPage() {
+  const [scroll, scrollTo] = useWindowScroll();
+
+  // Pagination states
+  const [paginationData, setPaginationData] = useState<PaginationData>({
+    currentPage: 1,
+    itemsPerPage: 50,
+    totalPages: 0,
+    totalItems: 0,
+  });
+
+  // Filter states
+  const [riskLevels, setRiskLevels] = useState<string[]>([]);
+  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [assetIps, setAssetIps] = useState<string[]>([]);
+  const [ports, setPorts] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "resolved" | "unresolved">(
+    "all",
+  );
+
+  // Sorting states
+  const [sortField, setSortField] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  // Filter options (available choices for filters)
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    riskLevels: [],
+    assetIps: [],
+    ports: [],
+    quarters: [],
+  });
+
   // Core states
   const [vulnerabilities, setVulnerabilities] = useState<
     Vulnerability[] | null
   >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // Sorting states
-  const [sortField, setSortField] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
-  // Drawer states
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
-
-  // Filter states
-  const [riskLevels, setRiskLevels] = useState<string[]>([]);
-  const [quarters, setQuarters] = useState<string[]>([]);
-  const [assetIps, setAssetIps] = useState<string[]>([]);
-  const [ports, setPorts] = useState<string[]>([]);
-
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  // Fetch user data
+  // Drawer states
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
+  // Helper function to get latest quarter data
+  const getLatestQuarterData = (quarterData: VulnerabilityQuarter[]) => {
+    if (!quarterData.length) return null;
+    return quarterData.reduce(
+      (latest, current) =>
+        new Date(current.quarterDate) > new Date(latest.quarterDate)
+          ? current
+          : latest,
+      quarterData[0],
+    );
+  };
+
+  const searchTimeoutRef = useRef<number | null>(null);
+  const [activeSearchQuery, setActiveSearchQuery] = useState(searchQuery);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+
+    // Clear any existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = window.setTimeout(() => {
+      setActiveSearchQuery(value);
+    }, 500);
+  }, []);
+
   useEffect(() => {
-    const fetchUser = async () => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Main data fetching function
+  const fetchVulnerabilities = useCallback(async () => {
+    if (!companyId) return;
+
+    try {
+      setIsLoading(true);
+
+      // Construct query parameters
+      const params = new URLSearchParams({
+        companyId: companyId.toString(),
+        page: paginationData.currentPage.toString(),
+        limit: paginationData.itemsPerPage.toString(),
+        sortBy: sortField,
+        sortOrder: sortDirection,
+        ...(activeSearchQuery && { search: activeSearchQuery }),
+        ...(selectedQuarter && { quarter: selectedQuarter }),
+        ...(status !== "all" && { status }),
+      });
+
+      // Add array parameters if they have values
+      if (riskLevels.length > 0)
+        params.append("riskLevels", riskLevels.join(","));
+      if (assetIps.length > 0) params.append("assetIps", assetIps.join(","));
+      if (ports.length > 0) params.append("ports", ports.join(","));
+
+      const res = await fetch(`/api/vuln?${params.toString()}`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
+      const response = await res.json();
+
+      setVulnerabilities(response.data);
+      setPaginationData((prev) => ({
+        ...prev,
+        totalItems: response.pagination.total,
+        totalPages: response.pagination.totalPages,
+      }));
+      setFilterOptions(response.filterOptions);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch vulnerabilities",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    companyId,
+    paginationData.currentPage,
+    paginationData.itemsPerPage,
+    sortField,
+    sortDirection,
+    //searchQuery,
+    activeSearchQuery,
+    selectedQuarter,
+    status,
+    riskLevels,
+    assetIps,
+    ports,
+  ]);
+
+  // Initial data fetch useEffect
+  useEffect(() => {
+    const fetchUserAndCompany = async () => {
       try {
         const res = await fetch("/api/auth/user", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
-          setCompanyId(data.companyId);
           setUserRole(data.role);
+          if (data.role === "Admin") {
+            const companiesRes = await fetch("/api/companies");
+            const companiesData = await companiesRes.json();
+            setCompanies(companiesData);
+            if (!companyId && companiesData.length > 0) {
+              setCompanyId(companiesData[0].id);
+            }
+          } else {
+            setCompanyId(data.companyId);
+          }
         }
       } catch (error) {
-        console.error("Error fetching user data:", error);
+        console.error("Error fetching initial data:", error);
       }
     };
-    fetchUser();
+    fetchUserAndCompany();
   }, []);
 
-  // Fetch companies for admin
+  // Fetch vulnerabilities when dependencies change
   useEffect(() => {
-    const fetchCompanies = async () => {
-      if (userRole === "Admin") {
-        try {
-          const res = await fetch("/api/companies");
-          const data = await res.json();
-          setCompanies(data);
-        } catch (error) {
-          console.error("Error fetching companies:", error);
-        }
-      }
-    };
-    fetchCompanies();
-  }, [userRole]);
-
-  // Fetch vulnerabilities
-  useEffect(() => {
-    const fetchVulnerabilities = async () => {
-      if (companyId) {
-        try {
-          setIsLoading(true);
-          const res = await fetch(`/api/vuln?companyId=${companyId}`, {
-            credentials: "include",
-          });
-          if (!res.ok) {
-            throw new Error(`HTTP error! status: ${res.status}`);
-          }
-          const data = await res.json();
-          setVulnerabilities(data);
-        } catch (err) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to fetch vulnerabilities"
-          );
-          console.error("Error fetching data:", err);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
-
     fetchVulnerabilities();
-  }, [companyId]);
+  }, [fetchVulnerabilities]);
 
-  // Filter vulnerabilities based on selected filters
-  const baseFilteredVulnerabilities = useMemo(() => {
-    if (!vulnerabilities) return [];
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPaginationData((prev) => ({ ...prev, currentPage: 1 }));
+  }, [
+    riskLevels,
+    assetIps,
+    ports,
+    selectedQuarter,
+    //searchQuery,
+    activeSearchQuery,
+    status,
+    paginationData.itemsPerPage,
+  ]);
 
-    return vulnerabilities.filter((vuln) => {
-      const matchesRisk =
-        riskLevels.length === 0 || riskLevels.includes(vuln.riskLevel);
-      const matchesQuarter =
-        quarters.length === 0 ||
-        quarters.some((quarter) => vuln.quarters?.includes(quarter));
-      const matchesIp =
-        assetIps.length === 0 || assetIps.includes(vuln.assetIp);
-      const matchesPort =
-        ports.length === 0 || ports.includes(String(vuln.port));
-
-      return matchesRisk && matchesQuarter && matchesIp && matchesPort;
-    });
-  }, [vulnerabilities, riskLevels, quarters, assetIps, ports]);
-
-  // Get filter options based on current filters
-  const getFilterOptions = useMemo(() => {
-    if (!vulnerabilities)
-      return {
-        riskLevels: [],
-        quarters: [],
-        assetIps: [],
-        ports: [],
-      };
-
-    // Function to filter vulnerabilities based on all criteria except the one being populated
-    const getFilteredOptions = (excludeField: string) => {
-      return vulnerabilities.filter((vuln) => {
-        const matchesRisk =
-          excludeField === "riskLevels" ||
-          riskLevels.length === 0 ||
-          riskLevels.includes(vuln.riskLevel);
-
-        const matchesQuarter =
-          excludeField === "quarters" ||
-          quarters.length === 0 ||
-          quarters.some((quarter) => vuln.quarters?.includes(quarter));
-
-        const matchesIp =
-          excludeField === "assetIps" ||
-          assetIps.length === 0 ||
-          assetIps.includes(vuln.assetIp);
-
-        const matchesPort =
-          excludeField === "ports" ||
-          ports.length === 0 ||
-          ports.includes(String(vuln.port));
-
-        return matchesRisk && matchesQuarter && matchesIp && matchesPort;
-      });
-    };
-
-    // Get available options for each filter based on other active filters
-    return {
-      riskLevels: Array.from(
-        new Set(getFilteredOptions("riskLevels").map((v) => v.riskLevel))
-      ).sort((a, b) => {
-        const riskOrder = ["Critical", "High", "Medium", "Low"];
-        const indexA = riskOrder.indexOf(a);
-        const indexB = riskOrder.indexOf(b);
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        return a.localeCompare(b);
-      }),
-      quarters: Array.from(
-        new Set(getFilteredOptions("quarters").flatMap((v) => v.quarters || []))
-      ).sort((a, b) => {
-        const [yearA, quarterA] = a.split("Q").map(Number);
-        const [yearB, quarterB] = b.split("Q").map(Number);
-        return yearA !== yearB ? yearA - yearB : quarterA - quarterB;
-      }),
-      assetIps: Array.from(
-        new Set(getFilteredOptions("assetIps").map((v) => v.assetIp))
-      ),
-      ports: Array.from(
-        new Set(getFilteredOptions("ports").map((v) => String(v.port)))
-      ),
-    };
-  }, [vulnerabilities, riskLevels, quarters, assetIps, ports]);
-
-  // Filter vulnerabilities based on search query
-  const filteredVulnerabilities = useMemo(() => {
-    return baseFilteredVulnerabilities.filter(
-      (vuln) =>
-        searchQuery === "" ||
-        vuln.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [baseFilteredVulnerabilities, searchQuery]);
-
-  // Sorting handlers
+  // Event Handlers
   const handleSort = useCallback(
     (field: string) => {
       if (sortField === field) {
-        if (sortDirection === "desc") {
-          setSortField(null);
-          setSortDirection("asc");
-        } else {
-          setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-        }
+        setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
       } else {
         setSortField(field);
         setSortDirection("asc");
       }
     },
-    [sortField, sortDirection]
+    [sortField],
   );
 
-  // Sort vulnerabilities
-  const sortedVulnerabilities = useMemo(() => {
-    if (!filteredVulnerabilities || !sortField) return filteredVulnerabilities;
-
-    return [...filteredVulnerabilities].sort((a, b) => {
-      const modifier = sortDirection === "asc" ? 1 : -1;
-
-      switch (sortField) {
-        case "title":
-          return modifier * a.title.localeCompare(b.title);
-        case "age":
-          return (
-            modifier *
-            (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          );
-        case "risk": {
-          const riskOrder = ["Critical", "High", "Medium", "Low"];
-          const riskA = riskOrder.indexOf(a.riskLevel);
-          const riskB = riskOrder.indexOf(b.riskLevel);
-          return modifier * (riskA - riskB);
-        }
-        case "resolved":
-          return (
-            modifier *
-            (a.isResolved === b.isResolved ? 0 : a.isResolved ? 1 : -1)
-          );
-        default:
-          return 0;
+  const handleFilterChange = useCallback(
+    (filterType: "risk" | "ip" | "port", values: string[]) => {
+      switch (filterType) {
+        case "risk":
+          setRiskLevels(values);
+          break;
+        case "ip":
+          setAssetIps(values);
+          break;
+        case "port":
+          setPorts(values);
+          break;
       }
-    });
-  }, [filteredVulnerabilities, sortField, sortDirection]);
+    },
+    [],
+  );
 
-  // Calculate time difference
+  const openDrawer = useCallback((vuln: Vulnerability) => {
+    setSelectedVuln(vuln);
+    setDrawerOpen(true);
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    setSelectedVuln(null);
+  }, []);
+
+  // Time difference calculation for display
   const getTimeDifference = useCallback((createdAt: string) => {
     const createdDate = new Date(createdAt);
     const now = new Date();
@@ -299,75 +312,38 @@ export default function DetailsPage() {
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
     return `${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""} ago`;
   }, []);
-
-  // Drawer handlers
-  const openDrawer = useCallback((vuln: Vulnerability) => {
-    setSelectedVuln(vuln);
-    setDrawerOpen(true);
-  }, []);
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    setSelectedVuln(null);
-  }, []);
-
-  // Export to CSV
-  const handleExportCSV = useCallback(() => {
-    if (!filteredVulnerabilities) return;
-
-    const csvData = filteredVulnerabilities.map((vuln) => ({
-      Title: vuln.title,
-      "Asset IP": vuln.assetIp,
-      "Operating System": vuln.assestOS,
-      Port: vuln.port,
-      Protocol: vuln.protocol,
-      "CVE IDs": vuln.cveId.join(", "),
-      Description: vuln.description,
-      "Risk Level": vuln.riskLevel,
-      "CVSS Score": vuln.cvssScore,
-      Impact: vuln.impact,
-      Recommendations: vuln.recommendations,
-      References: vuln.references.join(", "),
-      "Plugin Output": vuln.pluginOutput,
-      Age: getTimeDifference(vuln.createdAt),
-      Resolved: vuln.isResolved ? "Yes" : "No",
-      "Created At": new Date(vuln.createdAt).toLocaleString(),
-    }));
-
-    const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const filename = `vulnerabilities_${new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")}.csv`;
-    saveAs(blob, filename);
-  }, [filteredVulnerabilities, getTimeDifference]);
-
   return (
-    <Flex direction="column" gap="md" pos="relative">
-      <Button
-        rightSection={<IconCaretUpFilled size={16} />}
-        pos="fixed"
-        right="20px"
-        bottom="20px"
-        radius="lg"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      >
-        Top
-      </Button>
+    <Flex direction="column" gap="md">
+      {/* Scroll to top button */}
+      <Affix bottom={20} right={20}>
+        <Transition transition="slide-up" mounted={scroll.y > 0}>
+          {(transitionStyles) => (
+            <Button
+              leftSection={<IconArrowUp size={16} />}
+              style={transitionStyles}
+              onClick={() => scrollTo({ y: 0 })}
+            >
+              Scroll to top
+            </Button>
+          )}
+        </Transition>
+      </Affix>
 
-      <Grid miw="100%">
-        <Grid.Col span={8}>
+      {/* Search and Company Selection Section */}
+      <Grid miw="100%" align="flex-end">
+        <Grid.Col span={7}>
           <TextInput
+            label="Search Vulnerabilities by Title"
             placeholder="Search vulnerabilities by title..."
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.currentTarget.value)}
+            onChange={(event) => handleSearchChange(event.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            disabled={isLoading}
           />
         </Grid.Col>
         <Grid.Col span={2}>
           {userRole === "Admin" && companies.length > 0 && (
             <Select
+              label="Security Company"
               placeholder="Select Company"
               data={companies.map((comp) => ({
                 value: comp.id.toString(),
@@ -375,62 +351,67 @@ export default function DetailsPage() {
               }))}
               value={companyId ? companyId.toString() : ""}
               onChange={(value) => setCompanyId(Number(value))}
+              checkIconPosition="right"
             />
           )}
         </Grid.Col>
-        <GridCol span={2}>
+        <Grid.Col span={1}>
+          <Select
+            label="Items per page"
+            placeholder="Items per page"
+            value={paginationData.itemsPerPage.toString()}
+            onChange={(value) =>
+              setPaginationData((prev) => ({
+                ...prev,
+                itemsPerPage: Number(value),
+              }))
+            }
+            data={[
+              { value: "50", label: "50" },
+              { value: "100", label: "100" },
+            ]}
+            checkIconPosition="right"
+          />
+        </Grid.Col>
+        <Grid.Col span={2}>
           <Button
             variant="light"
+            rightSection={<IconTableExport size={16} />}
             fullWidth
-            onClick={handleExportCSV}
-            leftSection={<IconTableExport size={16} />}
-            disabled={!filteredVulnerabilities?.length}
           >
             Export CSV
           </Button>
-        </GridCol>
+        </Grid.Col>
       </Grid>
 
+      {/* Filters Section */}
       <Grid miw="100%">
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Risk Levels"
-            data={getFilterOptions.riskLevels.map((level) => ({
+            data={filterOptions.riskLevels.map((level) => ({
               value: level,
               label: level,
             }))}
             value={riskLevels}
-            onChange={setRiskLevels}
+            onChange={(values) => handleFilterChange("risk", values)}
             searchable
             disabled={isLoading}
             placeholder="Select risk levels"
+            checkIconPosition="right"
             clearable
           />
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
-            label="Time Periods"
-            data={getFilterOptions.quarters.map((quarter) => ({
-              value: quarter,
-              label: quarter,
-            }))}
-            value={quarters}
-            onChange={setQuarters}
-            searchable
-            disabled={isLoading}
-            placeholder="Select time periods"
-            clearable
-          />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
-          <MultiSelect
+            checkIconPosition="right"
             label="Asset IP"
-            data={getFilterOptions.assetIps.map((ip) => ({
+            data={filterOptions.assetIps.map((ip) => ({
               value: ip,
               label: ip,
             }))}
             value={assetIps}
-            onChange={setAssetIps}
+            onChange={(values) => handleFilterChange("ip", values)}
             searchable
             disabled={isLoading}
             placeholder="Select asset IPs"
@@ -440,116 +421,173 @@ export default function DetailsPage() {
         <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
           <MultiSelect
             label="Ports"
-            data={getFilterOptions.ports.map((port) => ({
-              value: port,
-              label: port,
+            data={filterOptions.ports.map((port) => ({
+              value: port.toString(),
+              label: port.toString(),
             }))}
             value={ports}
-            onChange={setPorts}
+            onChange={(values) => handleFilterChange("port", values)}
             searchable
             disabled={isLoading}
             placeholder="Select ports"
+            checkIconPosition="right"
             clearable
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
+          <Select
+            label="Quarter"
+            data={
+              filterOptions.quarters?.map((quarter) => ({
+                value: quarter,
+                label: quarter,
+              })) || []
+            }
+            value={selectedQuarter}
+            onChange={(value) => setSelectedQuarter(value || "")}
+            placeholder="Select quarter"
+            clearable
+            disabled={isLoading}
+            checkIconPosition="right"
           />
         </Grid.Col>
       </Grid>
 
+      {/* Status Tabs */}
+      <Tabs
+        value={status}
+        onChange={(value) => setStatus(value as typeof status)}
+      >
+        <Tabs.List>
+          <Tabs.Tab value="all">All</Tabs.Tab>
+          <Tabs.Tab value="resolved">Resolved</Tabs.Tab>
+          <Tabs.Tab value="unresolved">Unresolved</Tabs.Tab>
+        </Tabs.List>
+      </Tabs>
+
+      {/* Table Title and Count */}
       <Flex justify="space-between" align="center">
         <Title order={4}>Vulnerabilities</Title>
         {!isLoading && !error && (
           <Text size="sm" c="dimmed">
-            Showing {filteredVulnerabilities?.length || 0}
-            {vulnerabilities &&
-            filteredVulnerabilities?.length !== vulnerabilities.length
-              ? ` of ${vulnerabilities.length}`
-              : ""}{" "}
-            vulnerabilities
+            Showing{" "}
+            {(paginationData.currentPage - 1) * paginationData.itemsPerPage + 1}{" "}
+            to{" "}
+            {Math.min(
+              paginationData.currentPage * paginationData.itemsPerPage,
+              paginationData.totalItems,
+            )}{" "}
+            of {paginationData.totalItems} entries
           </Text>
         )}
       </Flex>
-
+      {/* Table Section with Loading and Error States */}
       {error ? (
         <Text c="red">{error}</Text>
       ) : isLoading ? (
         <Flex justify="center">
           <Loader size="lg" type="dots" />
         </Flex>
-      ) : filteredVulnerabilities?.length ? (
-        <Table highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th
-                onClick={() => handleSort("title")}
-                style={{ cursor: "pointer" }}
-                role="button"
-              >
-                Title{" "}
-                {sortField === "title" &&
-                  (sortDirection === "asc"
-                    ? "↑"
-                    : sortDirection === "desc"
-                    ? "↓"
-                    : "")}
-              </Table.Th>
-              <Table.Th>Asset IP</Table.Th>
-              <Table.Th
-                onClick={() => handleSort("risk")}
-                style={{ cursor: "pointer" }}
-                role="button"
-              >
-                Risk Level{" "}
-                {sortField === "risk" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Table.Th>
-              <Table.Th>Port</Table.Th>
-              <Table.Th
-                onClick={() => handleSort("resolved")}
-                style={{ cursor: "pointer" }}
-                role="button"
-              >
-                Resolved{" "}
-                {sortField === "resolved" &&
-                  (sortDirection === "asc" ? "↑" : "↓")}
-              </Table.Th>
-              <Table.Th
-                onClick={() => handleSort("age")}
-                style={{ cursor: "pointer" }}
-                role="button"
-              >
-                Age{" "}
-                {sortField === "age" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {sortedVulnerabilities?.map((vuln) => (
-              <Table.Tr
-                key={vuln.id}
-                onClick={() => openDrawer(vuln)}
-                style={{ cursor: "pointer" }}
-                role="button"
-                aria-label={`View details for vulnerability: ${vuln.title}`}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openDrawer(vuln);
-                  }
-                }}
-              >
-                <Table.Td>{vuln.title}</Table.Td>
-                <Table.Td>{vuln.assetIp}</Table.Td>
-                <Table.Td>{vuln.riskLevel}</Table.Td>
-                <Table.Td>{vuln.port}</Table.Td>
-                <Table.Td>{vuln.isResolved ? "Yes" : "No"}</Table.Td>
-                <Table.Td>{getTimeDifference(vuln.createdAt)}</Table.Td>
+      ) : vulnerabilities?.length ? (
+        <>
+          <Table highlightOnHover stickyHeader stickyHeaderOffset={60}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th
+                  onClick={() => handleSort("title")}
+                  style={{ cursor: "pointer" }}
+                  role="button"
+                >
+                  Title{" "}
+                  {sortField === "title" &&
+                    (sortDirection === "asc" ? "↑" : "↓")}
+                </Table.Th>
+                <Table.Th>Asset IP</Table.Th>
+                <Table.Th
+                  onClick={() => handleSort("risk")}
+                  style={{ cursor: "pointer" }}
+                  role="button"
+                >
+                  Risk Level{" "}
+                  {sortField === "risk" &&
+                    (sortDirection === "asc" ? "↑" : "↓")}
+                </Table.Th>
+                <Table.Th>Port</Table.Th>
+                <Table.Th
+                  onClick={() => handleSort("status")}
+                  style={{ cursor: "pointer" }}
+                  role="button"
+                >
+                  Status{" "}
+                  {sortField === "status" &&
+                    (sortDirection === "asc" ? "↑" : "↓")}
+                </Table.Th>
+                <Table.Th
+                  onClick={() => handleSort("createdAt")}
+                  style={{ cursor: "pointer" }}
+                  role="button"
+                >
+                  Age{" "}
+                  {sortField === "createdAt" &&
+                    (sortDirection === "asc" ? "↑" : "↓")}
+                </Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {vulnerabilities.map((vuln) => {
+                const currentQuarterData = selectedQuarter
+                  ? vuln.quarterData.find(
+                      (qd) => qd.quarter === selectedQuarter,
+                    )
+                  : getLatestQuarterData(vuln.quarterData);
+                const isResolved = currentQuarterData?.isResolved ?? false;
+
+                return (
+                  <Table.Tr
+                    key={vuln.id}
+                    onClick={() => openDrawer(vuln)}
+                    style={{ cursor: "pointer" }}
+                    role="button"
+                    aria-label={`View details for vulnerability: ${vuln.title}`}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openDrawer(vuln);
+                      }
+                    }}
+                  >
+                    <Table.Td>{vuln.title}</Table.Td>
+                    <Table.Td>{vuln.assetIp}</Table.Td>
+                    <Table.Td>{vuln.riskLevel}</Table.Td>
+                    <Table.Td>{vuln.port || "N/A"}</Table.Td>
+                    <Table.Td>
+                      {isResolved ? "Resolved" : "Unresolved"}
+                    </Table.Td>
+                    <Table.Td>{getTimeDifference(vuln.createdAt)}</Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+          <Group justify="center">
+            <Pagination
+              total={paginationData.totalPages}
+              boundaries={1}
+              siblings={1}
+              value={paginationData.currentPage}
+              onChange={(page) =>
+                setPaginationData((prev) => ({ ...prev, currentPage: page }))
+              }
+              withEdges
+              size="md"
+            />
+          </Group>
+        </>
       ) : (
         <Text>No vulnerabilities found.</Text>
       )}
-
+      {/* Drawer Component */}
       <Drawer
         opened={drawerOpen}
         onClose={closeDrawer}
@@ -570,32 +608,33 @@ export default function DetailsPage() {
               <strong>Asset IP:</strong> {selectedVuln.assetIp}
             </Text>
             <Text>
-              <strong>Operating System:</strong> {selectedVuln.assestOS}
+              <strong>Operating System:</strong> {selectedVuln.assetOS || "N/A"}
             </Text>
             <Text>
-              <strong>Port:</strong> {selectedVuln.port}
+              <strong>Port:</strong> {selectedVuln.port || "N/A"}
             </Text>
             <Text>
-              <strong>Protocol:</strong> {selectedVuln.protocol}
+              <strong>Protocol:</strong> {selectedVuln.protocol || "N/A"}
             </Text>
             <Text>
               <strong>CVE IDs:</strong>{" "}
-              {selectedVuln.cveId?.join(", ") || "No CVEs assigned"}
+              {selectedVuln.cveId.length > 0
+                ? selectedVuln.cveId.join(", ")
+                : "No CVEs assigned"}
             </Text>
             <Text>
               <strong>Description:</strong>{" "}
               {selectedVuln.description || "No description available"}
             </Text>
             <Text>
-              <strong>Risk Level:</strong>{" "}
-              {selectedVuln.riskLevel || "Not specified"}
+              <strong>Risk Level:</strong> {selectedVuln.riskLevel}
             </Text>
             <Text>
               <strong>CVSS Score:</strong>{" "}
               {selectedVuln.cvssScore || "Not available"}
             </Text>
             <Text>
-              <strong>Impact:</strong> {selectedVuln.impact || "Not specified"}
+              <strong>Impact:</strong> {selectedVuln.impact}
             </Text>
             <Text>
               <strong>Recommendations:</strong>{" "}
@@ -603,20 +642,41 @@ export default function DetailsPage() {
             </Text>
             <Text>
               <strong>References:</strong>{" "}
-              {selectedVuln.references?.join(", ") || "No references available"}
+              {selectedVuln.references.length > 0
+                ? selectedVuln.references.join(", ")
+                : "No references available"}
             </Text>
             <Text>
               <strong>Plugin Output:</strong>{" "}
               {selectedVuln.pluginOutput || "No plugin output available"}
             </Text>
             <Text>
-              <strong>Time Periods:</strong>{" "}
-              {selectedVuln.quarters?.join(", ") || "No time periods assigned"}
+              <strong>Quarter History:</strong>
             </Text>
-            <Text>
-              <strong>Resolved:</strong>{" "}
-              {selectedVuln.isResolved ? "Yes" : "No"}
-            </Text>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Quarter</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {selectedVuln.quarterData
+                  .sort(
+                    (a, b) =>
+                      new Date(b.quarterDate).getTime() -
+                      new Date(a.quarterDate).getTime(),
+                  )
+                  .map((qd) => (
+                    <Table.Tr key={qd.id}>
+                      <Table.Td>{qd.quarter}</Table.Td>
+                      <Table.Td>
+                        {qd.isResolved ? "Resolved" : "Unresolved"}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+              </Table.Tbody>
+            </Table>
             <Text>
               <strong>Created At:</strong>{" "}
               {new Date(selectedVuln.createdAt).toLocaleString()}

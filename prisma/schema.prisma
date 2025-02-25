@@ -13,6 +13,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Use exact field types for PostgreSQL
 enum RiskLevel {
   None
   Low
@@ -21,87 +22,113 @@ enum RiskLevel {
   Critical
 }
 
+enum UserRole {
+  Admin
+  Editor
+  User
+}
+
 model Company {
   id                   Int                    @id @default(autoincrement())
-  name                 String                 @unique
+  name                 String                 @unique @db.VarChar(50)
   vulnerabilities      Vulnerability[]
   vulnerabilitySummary VulnerabilitySummary[]
   users                User[]
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
+
+  @@index([name])
 }
 
 model Vulnerability {
-  id              String    @id @default(ulid())
-  assetIp         String
-  assetOS         String?
-  port            Int?
-  protocol        String?
-  title           String
-  cveId           String[]
-  description     String
+  id              String    @id @default(ulid()) @db.VarChar(26)
+  assetIp         String    @db.Text
+  assetOS         String?   @db.Text
+  port            Int?      @db.Integer
+  protocol        String?   @db.Text
+  title           String    @db.Text
+  cveId           String[]  @db.Text
+  description     String    @db.Text
   riskLevel       RiskLevel
-  cvssScore       Float?
-  impact          String
-  recommendations String
-  references      String[]
-  pluginOutput    String?
-  quarters        String[]
-  isResolved      Boolean   @default(false)
-  uniqueHash      String    @unique
+  cvssScore       Float?    @db.DoublePrecision
+  impact          String    @db.Text
+  recommendations String    @db.Text
+  references      String[]  @db.Text
+  pluginOutput    String?   @db.Text
+  uniqueHash      String    @unique @db.Text
   companyId       Int
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  quarterData VulnerabilityQuarter[]
 
   @@unique([companyId, uniqueHash])
-  @@index([riskLevel])
-  @@index([assetIp])
-  @@index([quarters])
+  @@index([riskLevel, companyId])
+  @@index([assetIp, companyId])
+  @@index([title, companyId])
+}
+
+model VulnerabilityQuarter {
+  id              String   @id @default(ulid()) @db.VarChar(26)
+  vulnerabilityId String   @db.VarChar(26)
+  quarter         String   @db.VarChar(7) // Format: "YYYY-QN"
+  isResolved      Boolean  @default(false)
+  quarterDate     DateTime
+
+  vulnerability Vulnerability @relation(fields: [vulnerabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([vulnerabilityId, quarter])
+  @@index([quarter, isResolved])
+  @@index([vulnerabilityId, isResolved])
 }
 
 model VulnerabilitySummary {
-  id              String   @id @default(ulid())
+  id              String   @id @default(ulid()) @db.VarChar(26)
   companyId       Int
   quarter         String
-  osSummary       Json
-  riskSummary     Json
-  topDevices      Json
-  resolvedCount   Int
-  unresolvedCount Int
-  newCount        Int
+  osSummary       Json     @db.JsonB
+  riskSummary     Json     @db.JsonB
+  topDevices      Json     @db.JsonB
+  resolvedCount   Int      @db.Integer
+  unresolvedCount Int      @db.Integer
+  newCount        Int      @db.Integer
+  totalCount      Int      @db.Integer
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  company         Company  @relation(fields: [companyId], references: [id])
+
+  company Company @relation(fields: [companyId], references: [id])
 
   @@unique([companyId, quarter])
+  @@index([quarter])
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String
-  role      UserRole @default(User)
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  email     String    @unique @db.VarChar(255)
+  password  String    @db.VarChar(255)
+  role      UserRole  @default(User)
   companyId Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lastLogin DateTime? @db.Timestamp(3)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([email])
+  @@index([companyId, role])
 }
 
 model RegisterToken {
   id        Int      @id @default(autoincrement())
-  token     String   @unique
-  email     String   @unique
-  companyId Int?     
+  token     String   @unique @db.VarChar(255)
+  email     String   @unique @db.VarChar(255)
+  companyId Int?
+  expiresAt DateTime @db.Timestamp(3)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
 
-enum UserRole {
-  Admin
-  Editor
-  User
+  @@index([token])
+  @@index([expiresAt])
 }

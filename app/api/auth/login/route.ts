@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma";
 interface LoginRequest {
   email: string;
   password: string;
-  remeberMe: boolean;
+  rememberMe: boolean;
 }
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json(
         { message: "Invalid email or password" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (!isPasswordValid) {
       return NextResponse.json(
         { message: "Invalid email or password" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     // Create response
     const response = NextResponse.json(
       { message: "Login successful" },
-      { status: 200 },
+      { status: 200 }
     );
 
     // Set secure HTTP-only cookie
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     console.error("Login error:", error);
     return NextResponse.json(
       { message: "Internal Server Error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

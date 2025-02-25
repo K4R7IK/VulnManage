@@ -13,10 +13,8 @@ import {
   Flex,
   Group,
   Title,
-  Button,
 } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
-import Link from "next/link";
 
 interface User {
   id: string;
@@ -26,12 +24,16 @@ interface User {
   companyId?: number;
 }
 
+interface TopDevice {
+  assetIp: string;
+  count: number;
+}
 interface VulnerabilitySummary {
   id: string;
   quarter: string;
   osSummary: Record<string, number>;
   riskSummary: Record<string, number>;
-  topDevices: { ip: string; count: number }[];
+  topDevices: TopDevice[];
   resolvedCount: number;
   unresolvedCount: number;
   newCount: number;
@@ -42,11 +44,14 @@ interface Company {
   name: string;
 }
 
+function formatKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(
-    null
+    null,
   );
   const [summaries, setSummaries] = useState<VulnerabilitySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +107,7 @@ export default function DashboardPage() {
         try {
           setLoading(true);
           const res = await fetch(
-            `/api/vulnsum?companyId=${selectedCompanyId}`
+            `/api/vulnsum?companyId=${selectedCompanyId}`,
           );
           const data = await res.json();
           setSummaries(data);
@@ -133,16 +138,19 @@ export default function DashboardPage() {
   // Prepare chart data for OS summary.
   const osChartData = summaries.map((summary) => ({
     quarter: summary.quarter,
-    ...summary.osSummary,
+    ...Object.fromEntries(
+      Object.entries(summary.osSummary).map(([key, value]) => [
+        formatKey(key),
+        value,
+      ]),
+    ),
   }));
+  console.log(osChartData);
 
   return (
     <Container fluid>
       <Group justify="space-between" my="sm">
-        <Title size="h2" fw={700} mb="md">
-          Summary Overview
-        </Title>
-
+        <Title size="h1">Dashboard</Title>
         {user && user.role === "Admin" && companies.length > 0 && (
           <SegmentedControl
             data={companies.map((comp) => ({
@@ -156,9 +164,11 @@ export default function DashboardPage() {
             fullWidth
           />
         )}
-        <Button component={Link} href="/dashboard/details" variant="light">
-          View Table
-        </Button>
+        {user && user.role !== "Admin" && (
+          <Text size="xl" fw={500}>
+            {companies.find((comp) => comp.id === user.companyId)?.name}
+          </Text>
+        )}
       </Group>
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, xl: 6 }}>
@@ -190,7 +200,13 @@ export default function DashboardPage() {
               h={250}
               data={osChartData}
               dataKey="quarter"
-              series={[{ name: "Unknown", color: "blue" }]}
+              series={[
+                { name: "Windows", color: "blue" },
+                { name: "Linux", color: "green" },
+                { name: "Network Device", color: "orange" },
+                { name: "Vm", color: "teal" },
+                { name: "Security Solution", color: "red" },
+              ]}
             />
           </Card>
         </Grid.Col>
@@ -241,9 +257,9 @@ export default function DashboardPage() {
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
-                        {summary.topDevices.map((device: any) => (
-                          <Table.Tr key={device.ip}>
-                            <Table.Td>{device.ip}</Table.Td>
+                        {summary.topDevices.map((device) => (
+                          <Table.Tr key={`${device.assetIp}:${device.count}`}>
+                            <Table.Td>{device.assetIp}</Table.Td>
                             <Table.Td>{device.count}</Table.Td>
                           </Table.Tr>
                         ))}

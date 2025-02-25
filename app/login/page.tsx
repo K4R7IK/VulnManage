@@ -39,8 +39,6 @@ export default function LoginPage() {
     },
     validate: {
       email: (value) => (/^\S+@\S+\.\S+$/.test(value) ? null : "Invalid email"),
-      password: (value) =>
-        value.length >= 6 ? null : "Password must be at least 6 characters",
     },
   });
 
