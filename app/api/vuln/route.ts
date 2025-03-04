@@ -78,7 +78,7 @@ export async function GET(request: Request) {
             id: true,
             quarter: true,
             isResolved: true,
-            quarterDate: true,
+            fileUploadDate: true,
           },
         },
       },

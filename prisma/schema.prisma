@@ -57,6 +57,7 @@ model Vulnerability {
   pluginOutput    String?   @db.Text
   uniqueHash      String    @unique @db.Text
   companyId       Int
+  fileUploadDate  DateTime
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -72,9 +73,11 @@ model Vulnerability {
 model VulnerabilityQuarter {
   id              String   @id @default(ulid()) @db.VarChar(26)
   vulnerabilityId String   @db.VarChar(26)
-  quarter         String   @db.VarChar(7) // Format: "YYYY-QN"
+  quarter         String   @db.VarChar(8)
   isResolved      Boolean  @default(false)
-  quarterDate     DateTime
+  fileUploadDate  DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   vulnerability Vulnerability @relation(fields: [vulnerabilityId], references: [id], onDelete: Cascade)
 
@@ -84,18 +87,22 @@ model VulnerabilityQuarter {
 }
 
 model VulnerabilitySummary {
-  id              String   @id @default(ulid()) @db.VarChar(26)
-  companyId       Int
-  quarter         String
-  osSummary       Json     @db.JsonB
-  riskSummary     Json     @db.JsonB
-  topDevices      Json     @db.JsonB
-  resolvedCount   Int      @db.Integer
-  unresolvedCount Int      @db.Integer
-  newCount        Int      @db.Integer
-  totalCount      Int      @db.Integer
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                      String   @id @default(ulid()) @db.VarChar(26)
+  companyId               Int
+  quarter                 String
+  osSummary               Json     @db.JsonB
+  riskSummary             Json     @db.JsonB
+  topDevices              Json     @db.JsonB
+  resolvedCount           Int      @db.Integer
+  unresolvedCount         Int      @db.Integer
+  newCount                Int      @db.Integer
+  totalCount              Int      @db.Integer
+  uniqueAssetCount        Int?     @db.Integer
+  assetChangeRate         Float?   @db.DoublePrecision
+  vulnerabilityGrowthRate Float?   @db.DoublePrecision
+  fileUploadDate          DateTime
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id])
 

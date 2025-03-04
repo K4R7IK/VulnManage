@@ -13,10 +13,20 @@ import {
   Center,
   Group,
   Radio,
+  Progress,
+  Alert,
+  Box,
+  Badge,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { showNotification } from "@mantine/notifications";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import {
+  IconCheck,
+  IconX,
+  IconUpload,
+  IconAlertCircle,
+  IconFileUpload,
+} from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 
 // Types
@@ -33,10 +43,19 @@ interface Quarter {
 interface UploadFormData {
   companyId: string;
   quarter: string;
-  creationDate: Date | null;
+  fileUploadDate: Date | null;
   file: File | null;
   assetOS: string;
   quarterType: "new" | "existing";
+}
+
+interface ProgressData {
+  status: "pending" | "processing" | "completed" | "error";
+  progress: number;
+  message: string;
+  error?: string;
+  startTime: number;
+  lastUpdateTime: number;
 }
 
 // Asset OS options
@@ -55,12 +74,15 @@ export default function UploadPage() {
   const [formData, setFormData] = useState<UploadFormData>({
     companyId: "",
     quarter: "",
-    creationDate: null,
+    fileUploadDate: null,
     file: null,
     assetOS: "",
     quarterType: "new",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [progressData, setProgressData] = useState<ProgressData | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   // Fetch companies
   useEffect(() => {
@@ -73,12 +95,11 @@ export default function UploadPage() {
         setCompanies(data);
       } catch (err) {
         console.error(err);
-        showNotification({
+        notifications.show({
           title: "Error",
           message: "Failed to load companies",
-          position: "bottom-right",
           color: "red",
-          icon: <IconX size={20} />,
+          icon: <IconX />,
         });
       } finally {
         setIsLoading(false);
@@ -106,12 +127,11 @@ export default function UploadPage() {
         setQuarters(data);
       } catch (err) {
         console.error(err);
-        showNotification({
+        notifications.show({
           title: "Error",
           message: "Failed to load quarters",
-          position: "bottom-right",
           color: "red",
-          icon: <IconX size={20} />,
+          icon: <IconX />,
         });
       } finally {
         setIsLoading(false);
@@ -119,6 +139,73 @@ export default function UploadPage() {
     }
     fetchQuarters();
   }, [formData.companyId]);
+
+  // Poll for progress updates when operation is in progress
+  useEffect(() => {
+    if (!operationId) return;
+
+    const fetchProgress = async () => {
+      try {
+        const res = await fetch(`/api/upload/progress?id=${operationId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Operation not found, stop polling
+            setOperationId(null);
+            return;
+          }
+          throw new Error("Failed to fetch progress");
+        }
+
+        const data = await res.json();
+        setProgressData(data);
+
+        // Stop polling if completed or error
+        if (data.status === "completed" || data.status === "error") {
+          if (data.status === "completed") {
+            notifications.show({
+              title: "Success",
+              message: "File processed successfully!",
+              color: "green",
+              icon: <IconCheck />,
+            });
+            // Reset form on completion
+            setFormData({
+              companyId: "",
+              quarter: "",
+              fileUploadDate: null,
+              file: null,
+              assetOS: "",
+              quarterType: "new",
+            });
+            router.refresh();
+          }
+
+          if (data.status === "error") {
+            notifications.show({
+              title: "Error",
+              message: "Processing failed. See details in the upload page.",
+              color: "red",
+              icon: <IconX />,
+            });
+            setErrorDetails(data.error || "Unknown error occurred");
+          }
+
+          // Clear operation ID to stop polling
+          setOperationId(null);
+        }
+      } catch (error) {
+        console.error("Error fetching progress:", error);
+      }
+    };
+
+    // Immediately fetch progress
+    fetchProgress();
+
+    // Then poll every 2 seconds
+    const interval = setInterval(fetchProgress, 2000);
+
+    return () => clearInterval(interval);
+  }, [operationId, router]);
 
   const validateFile = (file: File | null) => {
     if (!file) return "File is required.";
@@ -133,55 +220,53 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     try {
+      // Reset any previous errors
+      setErrorDetails(null);
+
       // Validate inputs
       if (!formData.companyId) {
-        showNotification({
+        notifications.show({
           title: "Error",
           message: "Please select a company.",
           color: "red",
-          icon: <IconX size={20} />,
-          position: "bottom-right",
+          icon: <IconX />,
         });
         return;
       }
       if (!formData.quarter) {
-        showNotification({
+        notifications.show({
           title: "Error",
           message: "Quarter is required.",
           color: "red",
-          icon: <IconX size={20} />,
-          position: "bottom-right",
+          icon: <IconX />,
         });
         return;
       }
-      if (!formData.creationDate) {
-        showNotification({
+      if (!formData.fileUploadDate) {
+        notifications.show({
           title: "Error",
-          message: "Creation date is required.",
+          message: "Upload date is required.",
           color: "red",
-          icon: <IconX size={20} />,
-          position: "bottom-right",
+          icon: <IconX />,
         });
         return;
       }
       if (!formData.assetOS) {
-        showNotification({
+        notifications.show({
           title: "Error",
           message: "Asset OS is required.",
           color: "red",
-          icon: <IconX size={20} />,
-          position: "bottom-right",
+          icon: <IconX />,
         });
         return;
       }
       const fileError = validateFile(formData.file);
       if (fileError) {
-        showNotification({
+        notifications.show({
           title: "Error",
           message: fileError,
           color: "red",
-          icon: <IconX size={20} />,
-          position: "bottom-right",
+          icon: <IconX />,
         });
         return;
       }
@@ -191,7 +276,7 @@ export default function UploadPage() {
       const uploadData = new FormData();
       uploadData.append("companyId", formData.companyId);
       uploadData.append("quarter", formData.quarter);
-      uploadData.append("creationDate", formData.creationDate.toISOString());
+      uploadData.append("fileUploadDate", formData.fileUploadDate.toISOString());
       uploadData.append("file", formData.file as File);
       uploadData.append("assetOS", formData.assetOS);
 
@@ -205,56 +290,120 @@ export default function UploadPage() {
         throw new Error(data.error || "Upload failed.");
       }
 
-      showNotification({
-        title: "Success",
-        message: "File uploaded successfully!",
-        color: "green",
-        icon: <IconCheck size={20} />,
-        position: "bottom-right",
-      });
+      // Get operation ID from response
+      const data = await res.json();
+      setOperationId(data.operationId);
 
-      // Reset form
-      setFormData({
-        companyId: "",
-        quarter: "",
-        creationDate: null,
-        file: null,
-        assetOS: "",
-        quarterType: "new",
+      // Show initial notification
+      notifications.show({
+        title: "Upload Started",
+        message: "Your file has been uploaded and is now being processed.",
+        color: "blue",
+        icon: <IconUpload />,
       });
+      setIsLoading(false);
     } catch (err) {
       console.error(err);
-      showNotification({
+      setIsLoading(false);
+      notifications.show({
         title: "Error uploading the file",
         message: err instanceof Error ? err.message : "File upload failed.",
         color: "red",
-        icon: <IconX size={20} />,
-        position: "bottom-right",
+        icon: <IconX />,
       });
-    } finally {
-      setIsLoading(false);
     }
-    router.refresh();
+  };
+
+  // Format elapsed time in a human-readable way
+  const formatElapsedTime = (startTime: number): string => {
+    const elapsedMs = Date.now() - startTime;
+    const seconds = Math.floor(elapsedMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+
+    if (minutes > 0) {
+      return `${minutes}m ${seconds % 60}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  // Determine the progress bar color based on status
+  const getProgressColor = (status: string): string => {
+    switch (status) {
+      case "completed":
+        return "green";
+      case "error":
+        return "red";
+      case "processing":
+        return "blue";
+      default:
+        return "gray";
+    }
   };
 
   return (
     <Flex justify="center" align="center" p="md">
       <Paper
-        withBorder
         shadow="md"
         p="xl"
         radius="md"
-        style={{ width: "45%", maxWidth: "701px" }}
+        withBorder
+        w={{ base: "95%", sm: "80%", md: "60%", lg: "45%" }}
+        maw={700}
       >
-        <Center>
-          <Title size="h2" fw={700} mb="md">
+        <Center mb="md">
+          <Title order={2} fw={700}>
             Upload Vulnerability Report
           </Title>
         </Center>
+
+        {/* Progress section */}
+        {progressData && (
+          <Box mb="xl">
+            <Group justify="space-between" mb="xs">
+              <Text fw={500}>Processing Status</Text>
+              <Badge color={getProgressColor(progressData.status)}>
+                {progressData.status === "pending"
+                  ? "Pending"
+                  : progressData.status === "processing"
+                    ? "Processing"
+                    : progressData.status === "completed"
+                      ? "Completed"
+                      : "Error"}
+              </Badge>
+            </Group>
+            <Progress
+              value={progressData.progress}
+              color={getProgressColor(progressData.status)}
+              size="md"
+              mb="xs"
+              striped={progressData.status === "processing"}
+              animated={progressData.status === "processing"}
+            />
+            <Group justify="space-between">
+              <Text size="sm">{progressData.message}</Text>
+              <Text size="sm" c="dimmed">
+                Elapsed: {formatElapsedTime(progressData.startTime)}
+              </Text>
+            </Group>
+
+            {progressData.status === "error" && errorDetails && (
+              <Alert
+                variant="light"
+                color="red"
+                title="Error Details"
+                icon={<IconAlertCircle />}
+                mt="md"
+              >
+                <Text size="sm">{errorDetails}</Text>
+              </Alert>
+            )}
+          </Box>
+        )}
+
+        {/* Upload form */}
         <Stack>
           <Select
-            disabled={isLoading}
-            variant="filled"
+            disabled={isLoading || !!operationId}
             label="Select Company"
             placeholder="Choose a company"
             data={companies.map((company) => ({
@@ -270,13 +419,12 @@ export default function UploadPage() {
               }))
             }
             required
-            checkIconPosition="right"
-            comboboxProps={{ shadow: "md" }}
+            searchable
+            clearable
           />
 
           <Select
-            disabled={isLoading}
-            variant="filled"
+            disabled={isLoading || !!operationId}
             label="Asset OS"
             placeholder="Select operating system"
             data={assetOSOptions}
@@ -285,36 +433,36 @@ export default function UploadPage() {
               setFormData((prev) => ({ ...prev, assetOS: value || "" }))
             }
             required
-            checkIconPosition="right"
-            comboboxProps={{ shadow: "md" }}
+            searchable
+            clearable
           />
 
           <Radio.Group
             value={formData.quarterType}
-            onChange={(value: "new" | "existing") =>
+            onChange={(value) =>
               setFormData((prev) => ({
                 ...prev,
-                quarterType: value,
+                quarterType: value as "new" | "existing",
                 quarter: "",
               }))
             }
             label="Quarter Type"
             required
+            // disabled={isLoading || !!operationId}
           >
             <Group mt="xs">
               <Radio value="new" label="New Quarter" />
               <Radio
                 value="existing"
                 label="Existing Quarter"
-                disabled={quarters.length === 0}
+                disabled={quarters.length === 0 || isLoading || !!operationId}
               />
             </Group>
           </Radio.Group>
 
           {formData.quarterType === "new" ? (
             <TextInput
-              disabled={isLoading}
-              variant="filled"
+              disabled={isLoading || !!operationId}
               label="New Quarter Name"
               placeholder="Enter quarter name"
               value={formData.quarter}
@@ -328,8 +476,7 @@ export default function UploadPage() {
             />
           ) : (
             <Select
-              disabled={isLoading}
-              variant="filled"
+              disabled={isLoading || !!operationId}
               label="Select Existing Quarter"
               placeholder="Choose a quarter"
               data={quarters.map((q) => ({
@@ -341,30 +488,28 @@ export default function UploadPage() {
                 setFormData((prev) => ({ ...prev, quarter: value || "" }))
               }
               required
-              checkIconPosition="right"
-              comboboxProps={{ shadow: "md" }}
+              searchable
+              clearable
             />
           )}
 
           <DateInput
-            disabled={isLoading}
-            variant="filled"
+            disabled={isLoading || !!operationId}
             label="Date"
-            placeholder="Set Creation Date"
+            placeholder="Set File Upload Date"
             clearable
             maxDate={new Date()}
-            value={formData.creationDate}
+            value={formData.fileUploadDate}
             onChange={(date) =>
               setFormData((prev) => ({
                 ...prev,
-                creationDate: date,
+                fileUploadDate: date,
               }))
             }
           />
 
           <FileInput
-            disabled={isLoading}
-            variant="filled"
+            disabled={isLoading || !!operationId}
             label="Select File"
             placeholder="Select .csv or .xlsx file"
             accept=".csv,.xlsx"
@@ -372,18 +517,19 @@ export default function UploadPage() {
             onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
             required
             clearable
+            leftSection={<IconFileUpload size={18} />}
           />
 
           <Text size="xs" c="dimmed">
-            Accepted formats: .csv, .xlsx (max 40MB)
+            Accepted formats: .csv, .xlsx (max 500MB)
           </Text>
 
           <Button
             onClick={handleUpload}
-            loading={isLoading}
-            loaderProps={{ type: "dots" }}
-            disabled={isLoading}
+            loading={isLoading && !operationId}
+            disabled={isLoading || !!operationId}
             color="blue"
+            leftSection={<IconUpload size={16} />}
           >
             Upload Report
           </Button>
