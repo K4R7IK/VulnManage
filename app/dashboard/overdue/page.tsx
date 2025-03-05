@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Container,
   Card,
@@ -10,15 +10,23 @@ import {
   Badge,
   Loader,
   Select,
-  Group,
   Paper,
   Flex,
   MultiSelect,
   TextInput,
   Pagination,
+  Group,
+  Box,
+  Button,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconSearch, IconClock } from "@tabler/icons-react";
+import {
+  IconSearch,
+  IconClock,
+  IconArrowBadgeUp,
+  IconArrowBadgeDown,
+  IconRefresh,
+} from "@tabler/icons-react";
 
 // Define types
 interface Vulnerability {
@@ -40,20 +48,60 @@ interface Company {
 export default function OverdueVulnerabilitiesPage() {
   // State variables
   const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
-  const [filteredVulnerabilities, setFilteredVulnerabilities] = useState<
-    Vulnerability[]
-  >([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(
-    null
+    null,
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedRiskLevels, setSelectedRiskLevels] = useState<string[]>([]);
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
-  const [itemsPerPage] = useState(10);
   const [userRole, setUserRole] = useState<string | null>(null);
+
+  // Pagination and sorting state
+  const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(25);
+  const [totalItems, setTotalItems] = useState(0);
+  const [cursors, setCursors] = useState<Record<number, string>>({});
+  const [sortBy, setSortBy] = useState<string>("riskLevel");
+  const [sortOrder, setSortOrder] = useState<string>("desc");
+
+  // Ref for search debounce
+  const searchTimeoutRef = useRef<number | null>(null);
+
+  // Options for items per page
+  const itemsPerPageOptions = [
+    { value: "25", label: "25 rows" },
+    { value: "50", label: "50 rows" },
+    { value: "100", label: "100 rows" },
+    { value: "200", label: "200 rows" },
+  ];
+
+  // Handle search term change with debounce
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchTerm(value);
+    // Clear any existing timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    // Set a new timeout
+    searchTimeoutRef.current = window.setTimeout(() => {
+      setDebouncedSearchTerm(value);
+      // Reset pagination when search changes
+      setPage(1);
+      setCursors({});
+    }, 500);
+  }, []);
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Fetch user information on component mount
   useEffect(() => {
@@ -100,23 +148,123 @@ export default function OverdueVulnerabilitiesPage() {
     fetchCompanies();
   }, [userRole]);
 
-  // Fetch overdue vulnerabilities
+  // Function to toggle sort order
+  const toggleSortOrder = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("desc"); // Default to descending when changing fields
+    }
+    // Reset pagination on sort change
+    setPage(1);
+    setCursors({});
+  };
+
+  const handleRefresh = useCallback(() => {
+    if (!selectedCompanyId) return;
+
+    setLoading(true);
+    try {
+      // Determine the cursor for this page (if not the first page)
+      const cursor = page > 1 ? cursors[page - 1] : undefined;
+
+      // Build the URL with query parameters
+      let url = `/api/vuln/overdue?companyId=${selectedCompanyId}&limit=${itemsPerPage}`;
+      if (cursor) url += `&cursor=${cursor}`;
+      url += `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+
+      // Add filters to the URL
+      if (debouncedSearchTerm)
+        url += `&search=${encodeURIComponent(debouncedSearchTerm)}`;
+      if (selectedRiskLevels.length > 0)
+        url += `&riskLevels=${selectedRiskLevels.join(",")}`;
+      if (selectedAssetTypes.length > 0)
+        url += `&assetTypes=${selectedAssetTypes.join(",")}`;
+
+      fetch(url, { credentials: "include" })
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error("Failed to fetch data");
+        })
+        .then(({ data, nextCursor, totalCount }) => {
+          setVulnerabilities(data);
+          setTotalItems(totalCount);
+
+          // If we have a next cursor, store it for the next page
+          if (nextCursor) {
+            setCursors((prev) => ({
+              ...prev,
+              [page]: nextCursor,
+            }));
+          }
+        })
+        .catch((error) => {
+          console.error("Error fetching overdue vulnerabilities:", error);
+          notifications.show({
+            title: "Error",
+            message: "Failed to fetch overdue vulnerabilities",
+            color: "red",
+          });
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } catch (error) {
+      console.error("Error in refresh:", error);
+      setLoading(false);
+    }
+  }, [
+    selectedCompanyId,
+    page,
+    itemsPerPage,
+    sortBy,
+    sortOrder,
+    debouncedSearchTerm,
+    selectedRiskLevels,
+    selectedAssetTypes,
+    cursors,
+  ]);
+
+  // Fetch vulnerabilities when filters change
   useEffect(() => {
-    const fetchOverdueVulnerabilities = async () => {
+    const fetchData = async () => {
       if (!selectedCompanyId) return;
 
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/vuln/overdue?companyId=${selectedCompanyId}`,
-          {
-            credentials: "include",
-          }
-        );
+        // Determine the cursor for this page (if not the first page)
+        const cursor = page > 1 ? cursors[page - 1] : undefined;
+
+        // Build the URL with query parameters
+        let url = `/api/vuln/overdue?companyId=${selectedCompanyId}&limit=${itemsPerPage}`;
+        if (cursor) url += `&cursor=${cursor}`;
+        url += `&sortBy=${sortBy}&sortOrder=${sortOrder}`;
+
+        // Add filters to the URL
+        if (debouncedSearchTerm)
+          url += `&search=${encodeURIComponent(debouncedSearchTerm)}`;
+        if (selectedRiskLevels.length > 0)
+          url += `&riskLevels=${selectedRiskLevels.join(",")}`;
+        if (selectedAssetTypes.length > 0)
+          url += `&assetTypes=${selectedAssetTypes.join(",")}`;
+
+        const res = await fetch(url, {
+          credentials: "include",
+        });
+
         if (res.ok) {
-          const data = await res.json();
+          const { data, nextCursor, totalCount } = await res.json();
           setVulnerabilities(data);
-          setFilteredVulnerabilities(data);
+          setTotalItems(totalCount);
+
+          // If we have a next cursor, store it for the next page
+          if (nextCursor) {
+            setCursors((prev) => ({
+              ...prev,
+              [page]: nextCursor,
+            }));
+          }
         } else {
           notifications.show({
             title: "Error",
@@ -136,59 +284,37 @@ export default function OverdueVulnerabilitiesPage() {
       }
     };
 
-    fetchOverdueVulnerabilities();
-  }, [selectedCompanyId]);
+    if (selectedCompanyId) {
+      fetchData();
+    }
+  }, [
+    selectedCompanyId,
+    page,
+    itemsPerPage,
+    sortBy,
+    sortOrder,
+    debouncedSearchTerm,
+    selectedRiskLevels,
+    selectedAssetTypes,
+    // No function dependency here - this was causing the infinite loop
+  ]);
 
-  // Apply filters
+  // Reset pagination when filters change
   useEffect(() => {
-    let filtered = [...vulnerabilities];
+    setPage(1);
+    setCursors({});
+  }, [
+    selectedCompanyId,
+    itemsPerPage,
+    sortBy,
+    sortOrder,
+    debouncedSearchTerm,
+    selectedRiskLevels,
+    selectedAssetTypes,
+  ]);
 
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (vuln) =>
-          vuln.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          vuln.assetIp.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Filter by risk level
-    if (selectedRiskLevels.length > 0) {
-      filtered = filtered.filter((vuln) =>
-        selectedRiskLevels.includes(vuln.riskLevel)
-      );
-    }
-
-    // Filter by asset type
-    if (selectedAssetTypes.length > 0) {
-      filtered = filtered.filter((vuln) =>
-        selectedAssetTypes.includes(vuln.assetType)
-      );
-    }
-
-    // Sort by risk level (highest to lowest) and then by days past SLA (highest to lowest)
-    filtered.sort((a, b) => {
-      // First by risk level
-      const riskOrder = { Critical: 4, High: 3, Medium: 2, Low: 1, None: 0 };
-      const riskDiff =
-        riskOrder[b.riskLevel as keyof typeof riskOrder] -
-        riskOrder[a.riskLevel as keyof typeof riskOrder];
-
-      if (riskDiff !== 0) return riskDiff;
-
-      // Then by days past SLA
-      return b.daysPastSLA - a.daysPastSLA;
-    });
-
-    setFilteredVulnerabilities(filtered);
-  }, [vulnerabilities, searchTerm, selectedRiskLevels, selectedAssetTypes]);
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredVulnerabilities.length / itemsPerPage);
-  const paginatedVulnerabilities = filteredVulnerabilities.slice(
-    (page - 1) * itemsPerPage,
-    page * itemsPerPage
-  );
+  // Calculate total pages
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   // Get badge color based on risk level
   const getRiskBadgeColor = (riskLevel: string) => {
@@ -209,23 +335,57 @@ export default function OverdueVulnerabilitiesPage() {
     return "yellow";
   };
 
-  // Get unique asset types from vulnerabilities
-  const assetTypeOptions = Array.from(
-    new Set(vulnerabilities.map((v) => v.assetType))
-  ).map((type) => ({ value: type, label: type }));
+  // Get sort icon for column headers
+  const getSortIcon = (field: string) => {
+    if (sortBy !== field) return null;
+    return sortOrder === "asc" ? (
+      <IconArrowBadgeUp size={16} />
+    ) : (
+      <IconArrowBadgeDown size={16} />
+    );
+  };
+
+  // Handle risk level filter change
+  const handleRiskLevelChange = (values: string[]) => {
+    setSelectedRiskLevels(values);
+    setPage(1);
+    setCursors({});
+  };
+
+  // Handle asset type filter change
+  const handleAssetTypeChange = (values: string[]) => {
+    setSelectedAssetTypes(values);
+    setPage(1);
+    setCursors({});
+  };
 
   return (
     <Container fluid>
       <Paper p="md" shadow="xs" mb="md">
-        <Title order={2} mb="md">
-          Overdue Vulnerabilities
-        </Title>
-        <Text c="dimmed" mb="md">
-          Vulnerabilities that have exceeded their remediation SLA based on risk
-          level
-        </Text>
+        <Flex justify="space-between" align="center" mb="md">
+          <Box>
+            <Title order={2}>Overdue Vulnerabilities</Title>
+            <Text c="dimmed">
+              Vulnerabilities that have exceeded their remediation SLA based on
+              risk level
+            </Text>
+          </Box>
+          <Button
+            leftSection={<IconRefresh size={16} />}
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Flex>
 
-        <Flex gap="md" direction={{ base: "column", md: "row" }} mb="md">
+        <Flex
+          gap="md"
+          direction={{ base: "column", md: "row" }}
+          mb="md"
+          wrap="wrap"
+        >
           {/* Company selector (for admins) */}
           {userRole === "Admin" && (
             <Select
@@ -236,8 +396,13 @@ export default function OverdueVulnerabilitiesPage() {
                 label: c.name,
               }))}
               value={selectedCompanyId}
-              onChange={setSelectedCompanyId}
-              w={{ base: "100%", md: "250px" }}
+              onChange={(value) => {
+                setSelectedCompanyId(value);
+                setPage(1);
+                setCursors({});
+              }}
+              w={{ base: "100%", md: "200px" }}
+              disabled={loading}
             />
           )}
 
@@ -246,9 +411,10 @@ export default function OverdueVulnerabilitiesPage() {
             label="Search"
             placeholder="Search by title or IP"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.currentTarget.value)}
+            onChange={(e) => handleSearchChange(e.currentTarget.value)}
             leftSection={<IconSearch size={16} />}
-            w={{ base: "100%", md: "300px" }}
+            w={{ base: "100%", md: "250px" }}
+            disabled={loading}
           />
 
           {/* Risk level filter */}
@@ -262,18 +428,24 @@ export default function OverdueVulnerabilitiesPage() {
               { value: "Low", label: "Low" },
             ]}
             value={selectedRiskLevels}
-            onChange={setSelectedRiskLevels}
-            w={{ base: "100%", md: "250px" }}
+            onChange={handleRiskLevelChange}
+            w={{ base: "100%", md: "200px" }}
+            disabled={loading}
           />
 
           {/* Asset type filter */}
           <MultiSelect
             label="Asset Type"
             placeholder="Filter by asset type"
-            data={assetTypeOptions}
+            data={[
+              { value: "Internet", label: "Internet" },
+              { value: "Intranet", label: "Intranet" },
+              { value: "Endpoint", label: "Endpoint" },
+            ]}
             value={selectedAssetTypes}
-            onChange={setSelectedAssetTypes}
-            w={{ base: "100%", md: "250px" }}
+            onChange={handleAssetTypeChange}
+            w={{ base: "100%", md: "200px" }}
+            disabled={loading}
           />
         </Flex>
       </Paper>
@@ -282,7 +454,7 @@ export default function OverdueVulnerabilitiesPage() {
         <Flex justify="center" align="center" h="200px">
           <Loader size="lg" />
         </Flex>
-      ) : filteredVulnerabilities.length === 0 ? (
+      ) : vulnerabilities.length === 0 ? (
         <Card p="xl" withBorder>
           <Text ta="center" fw={500} size="lg">
             No overdue vulnerabilities found
@@ -297,14 +469,30 @@ export default function OverdueVulnerabilitiesPage() {
                   <Table.Th>Title</Table.Th>
                   <Table.Th>Asset IP</Table.Th>
                   <Table.Th>OS</Table.Th>
-                  <Table.Th>Risk Level</Table.Th>
+                  <Table.Th
+                    onClick={() => toggleSortOrder("riskLevel")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Group gap="xs">
+                      Risk Level
+                      {getSortIcon("riskLevel")}
+                    </Group>
+                  </Table.Th>
                   <Table.Th>Asset Type</Table.Th>
                   <Table.Th>Discovery Date</Table.Th>
-                  <Table.Th>Days Past SLA</Table.Th>
+                  <Table.Th
+                    onClick={() => toggleSortOrder("daysPastSLA")}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Group gap="xs">
+                      Days Past SLA
+                      {getSortIcon("daysPastSLA")}
+                    </Group>
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {paginatedVulnerabilities.map((vuln) => (
+                {vulnerabilities.map((vuln) => (
                   <Table.Tr key={vuln.id}>
                     <Table.Td>{vuln.title}</Table.Td>
                     <Table.Td>{vuln.assetIp}</Table.Td>
@@ -332,22 +520,35 @@ export default function OverdueVulnerabilitiesPage() {
             </Table>
           </Card>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <Group justify="center" mb="md">
+          {/* Pagination controls */}
+          <Flex justify="space-between" align="center" mb="md">
+            <Select
+              data={itemsPerPageOptions}
+              value={itemsPerPage.toString()}
+              onChange={(value) => {
+                setItemsPerPage(Number(value));
+                setPage(1);
+                setCursors({});
+              }}
+              w={120}
+              disabled={loading}
+            />
+
+            {totalPages > 1 && (
               <Pagination
                 total={totalPages}
                 value={page}
                 onChange={setPage}
                 withEdges
+                disabled={loading}
               />
-            </Group>
-          )}
+            )}
 
-          <Text c="dimmed" size="sm" ta="center">
-            Showing {paginatedVulnerabilities.length} of{" "}
-            {filteredVulnerabilities.length} overdue vulnerabilities
-          </Text>
+            <Text c="dimmed" size="sm" ta="right">
+              Showing {Math.min(itemsPerPage, vulnerabilities.length)} of{" "}
+              {totalItems} overdue vulnerabilities
+            </Text>
+          </Flex>
         </>
       )}
     </Container>
