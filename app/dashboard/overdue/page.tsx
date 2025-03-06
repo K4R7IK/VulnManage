@@ -226,6 +226,12 @@ export default function OverdueVulnerabilitiesPage() {
     cursors,
   ]);
 
+  useEffect(() => {
+    if (selectedCompanyId) {
+      handleRefresh();
+    }
+  }, [selectedCompanyId]);
+
   // Fetch vulnerabilities when filters change
   useEffect(() => {
     const fetchData = async () => {

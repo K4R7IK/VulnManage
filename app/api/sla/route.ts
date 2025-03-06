@@ -3,9 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { verifyAuth } from "@/utils/verifyAuth";
 
+// Define types for SLA configurations
+interface SLAData {
+  riskLevel: string;
+  sla: number;
+  type: string;
+}
+
 // Define a service for handling SLA operations
 class SLAService {
-  constructor(private prisma: typeof prisma) { }
+  constructor(private prisma: typeof prisma) {}
 
   async getSLAConfig(companyId: number) {
     try {
@@ -23,7 +30,7 @@ class SLAService {
     }
   }
 
-  async updateSLAConfig(companyId: number, slaData: any[]) {
+  async updateSLAConfig(companyId: number, slaData: SLAData[]) {
     try {
       // Use a transaction to ensure atomicity
       return await this.prisma.$transaction(async (tx) => {
@@ -70,7 +77,7 @@ export async function GET(request: NextRequest) {
     if (!companyId) {
       return NextResponse.json(
         { error: "Company ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,7 +89,7 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching SLA configuration:", error);
     return NextResponse.json(
       { error: "Failed to fetch SLA configuration" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -98,7 +105,7 @@ export async function POST(request: NextRequest) {
     if (auth.user && auth.user.role !== "Admin") {
       return NextResponse.json(
         { error: "Unauthorized: Admin privileges required" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -109,7 +116,7 @@ export async function POST(request: NextRequest) {
     if (!companyId || !slaData || !Array.isArray(slaData)) {
       return NextResponse.json(
         { error: "Invalid request data" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -123,7 +130,7 @@ export async function POST(request: NextRequest) {
     console.error("Error updating SLA configuration:", error);
     return NextResponse.json(
       { error: "Failed to update SLA configuration" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

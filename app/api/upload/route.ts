@@ -27,6 +27,12 @@ interface UploadedFile {
   originalFilename: string;
 }
 
+// Define specific error type for form parsing
+interface FormidableError extends Error {
+  code?: string;
+  httpCode?: number;
+}
+
 // Validation schema
 const uploadSchema = z.object({
   quarter: z.string().min(1, "Quarter is required"),
@@ -76,14 +82,14 @@ async function parseForm(req: Request): Promise<{
     form.parse(
       stream,
       (
-        err: any,
+        err: FormidableError | null,
         fields: {
           quarter: string;
           companyId: string;
           fileUploadDate: string;
           assetOS: string;
         },
-        files: any,
+        files: Record<string, UploadedFile[]>,
       ) => {
         if (err) {
           reject(err);

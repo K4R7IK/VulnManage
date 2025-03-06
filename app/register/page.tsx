@@ -12,7 +12,7 @@ import {
   Center,
   Title,
 } from "@mantine/core";
-import { redirect } from "next/navigation";
+import router from "next/router";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -33,9 +33,13 @@ export default function RegisterPage() {
       if (!res.ok) throw new Error(data.error || "Failed to register");
 
       setSuccess("Registration successful! You can now log in.");
-      redirect("/login");
-    } catch (error:any) {
-      setError(error.message);
+      router.push("/login");
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("Failed to register");
+      }
     }
   };
 
@@ -69,7 +73,9 @@ export default function RegisterPage() {
           required
           mt="md"
         />
-        <Button mt="md" fullWidth onClick={handleRegister}>Register</Button>
+        <Button mt="md" fullWidth onClick={handleRegister}>
+          Register
+        </Button>
         {error && <Notification color="red">{error}</Notification>}
         {success && <Notification color="green">{success}</Notification>}
       </Paper>

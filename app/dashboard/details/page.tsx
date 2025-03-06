@@ -235,7 +235,7 @@ export default function DetailsPage() {
       }
     };
     fetchUserAndCompany();
-  }, []);
+  }, [companyId]);
 
   // Fetch vulnerabilities when dependencies change
   useEffect(() => {

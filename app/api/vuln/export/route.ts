@@ -3,6 +3,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/utils/verifyAuth";
 import prisma from "@/lib/prisma";
 
+interface ExportedVulnerability {
+  "Asset IP": string;
+  "Asset OS": string;
+  Port: string | number;
+  Protocol: string;
+  Title: string;
+  "CVE IDs": string;
+  "Risk Level": string;
+  "CVSS Score": string | number;
+  Description: string;
+  Impact: string;
+  Recommendations: string;
+  References: string;
+  Company: string;
+  Status: string;
+  Quarter: string;
+  "Created At": string;
+  [key: string]: string | number; // Index signature to allow dynamic property access
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { user } = await verifyAuth();
@@ -17,7 +37,7 @@ export async function GET(req: NextRequest) {
       : null;
     const tab = searchParams.get("tab") || "all";
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       title: { contains: search, mode: "insensitive" },
     };
 
@@ -57,7 +77,7 @@ export async function GET(req: NextRequest) {
             quarter: true,
           },
           orderBy: {
-            quarterDate: "desc",
+            fileUploadDate: "desc",
           },
           take: 1,
         },
@@ -86,13 +106,13 @@ export async function GET(req: NextRequest) {
       "Created At": vuln.createdAt.toISOString().split("T")[0],
     }));
 
-    const headers = Object.keys(csvData[0]);
+    const headers = Object.keys(csvData[0] || {});
     const csv = [
       headers.join(","),
       ...csvData.map((row) =>
         headers
           .map((header) => {
-            const value = row[header as keyof typeof row];
+            const value = row[header as keyof ExportedVulnerability];
             return JSON.stringify(value?.toString() || "").replace(/\\n/g, " ");
           })
           .join(","),

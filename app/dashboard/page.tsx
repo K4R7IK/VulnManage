@@ -202,6 +202,61 @@ export default function DashboardPage() {
     );
   }
 
+  // Check if there are no summaries
+  if (summaries.length === 0) {
+    return (
+      <Container fluid>
+        <Group justify="space-between" my="sm">
+          <Title size="h1">Security Dashboard</Title>
+
+          {user && user.role === "Admin" && (
+            <Group>
+              {companies.length > 0 && (
+                <SegmentedControl
+                  data={companies.map((comp) => ({
+                    value: comp.id.toString(),
+                    label: comp.name,
+                  }))}
+                  value={selectedCompanyId ? selectedCompanyId.toString() : ""}
+                  onChange={(value) => setSelectedCompanyId(Number(value))}
+                  withItemsBorders
+                  radius="md"
+                />
+              )}
+            </Group>
+          )}
+
+          {user && user.role !== "Admin" && (
+            <Text size="xl" fw={500}>
+              {companies.find((comp) => comp.id === user.companyId)?.name}
+            </Text>
+          )}
+        </Group>
+
+        <Card withBorder shadow="md" p="xl" mt="xl">
+          <Flex direction="column" align="center" gap="md">
+            <IconAlertTriangle size={48} color="gray" />
+            <Title order={3}>No Vulnerability Data</Title>
+            <Text c="dimmed" ta="center">
+              No vulnerability summaries found for the selected company. Upload
+              vulnerability data to see the dashboard.
+            </Text>
+            {user?.role === "Admin" && (
+              <Button
+                component="a"
+                href="/dashboard/upload"
+                variant="light"
+                mt="md"
+              >
+                Upload Vulnerability Data
+              </Button>
+            )}
+          </Flex>
+        </Card>
+      </Container>
+    );
+  }
+
   // Get the currently selected quarter summary
   const currentQuarterSummary =
     summaries.find((s) => s.quarter === selectedQuarter) || summaries[0];
@@ -216,7 +271,7 @@ export default function DashboardPage() {
     {
       totalVulnerabilities: 0,
       resolvedVulnerabilities: 0,
-      uniqueAssets: currentQuarterSummary.uniqueAssetCount || 0,
+      uniqueAssets: currentQuarterSummary?.uniqueAssetCount || 0,
     },
   );
 
@@ -365,7 +420,7 @@ export default function DashboardPage() {
             <Text size="xs" c="dimmed">
               Current Quarter
             </Text>
-            {currentQuarterSummary?.vulnerabilityGrowthRate &&
+            {currentQuarterSummary?.vulnerabilityGrowthRate !== undefined &&
               (currentQuarterSummary.vulnerabilityGrowthRate > 0 ? (
                 <Group gap={4}>
                   <Text size="xs" c="red">
@@ -397,7 +452,7 @@ export default function DashboardPage() {
       {/* Quarter selector */}
       {summaries.length > 0 && (
         <Paper withBorder p="xs" mb="md">
-          <Group>
+          <Group justify="space-between">
             <Text size="sm" fw={500}>
               Select Quarter for Detailed View:
             </Text>
@@ -545,7 +600,7 @@ export default function DashboardPage() {
               {summaries.map((summary) => (
                 <Accordion.Item key={summary.id} value={summary.id}>
                   <Accordion.Control>
-                    <Group>
+                    <Group justify="space-between">
                       <Text>Top Vulnerable Devices in {summary.quarter}</Text>
                       <Badge>{summary.topDevices.length} Devices</Badge>
                     </Group>

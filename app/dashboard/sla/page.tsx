@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Container,
   Card,
@@ -32,6 +32,13 @@ import { useForm } from "@mantine/form";
 interface Company {
   id: number;
   name: string;
+}
+
+interface FormDataStructure {
+  internet: Record<string, number>;
+  intranet: Record<string, number>;
+  endpoint: Record<string, number>;
+  [key: string]: Record<string, number>;
 }
 
 enum AssetType {
@@ -191,7 +198,8 @@ export default function SLAManagementPage() {
               typeLower in formData &&
               riskLevelLower in formData[typeLower]
             ) {
-              (formData[typeLower] as any)[riskLevelLower] = sla.sla;
+              (formData[typeLower] as Record<string, number>)[riskLevelLower] =
+                sla.sla;
             }
           });
 
@@ -215,6 +223,7 @@ export default function SLAManagementPage() {
     };
 
     fetchSLAConfig();
+    // Remove form from the dependency array
   }, [selectedCompanyId]);
 
   // Handle form submission
