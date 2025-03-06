@@ -397,7 +397,7 @@ export default function DashboardPage() {
       {/* Quarter selector */}
       {summaries.length > 0 && (
         <Paper withBorder p="xs" mb="md">
-          <Group position="apart">
+          <Group>
             <Text size="sm" fw={500}>
               Select Quarter for Detailed View:
             </Text>
@@ -545,7 +545,7 @@ export default function DashboardPage() {
               {summaries.map((summary) => (
                 <Accordion.Item key={summary.id} value={summary.id}>
                   <Accordion.Control>
-                    <Group position="apart">
+                    <Group>
                       <Text>Top Vulnerable Devices in {summary.quarter}</Text>
                       <Badge>{summary.topDevices.length} Devices</Badge>
                     </Group>

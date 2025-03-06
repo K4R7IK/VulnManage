@@ -13,10 +13,6 @@ import {
   Group,
   Select,
   Paper,
-  Stack,
-  Flex,
-  rem,
-  Grid,
   Divider,
   Badge,
   SegmentedControl,
@@ -94,7 +90,7 @@ export default function SLAManagementPage() {
   const [saving, setSaving] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(
-    null
+    null,
   );
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AssetType>(AssetType.Internet);
@@ -434,7 +430,7 @@ export default function SLAManagementPage() {
                       min={1}
                       max={365}
                       {...form.getInputProps(
-                        `${activeTab.toLowerCase()}.critical`
+                        `${activeTab.toLowerCase()}.critical`,
                       )}
                       w="100%"
                     />
@@ -466,7 +462,7 @@ export default function SLAManagementPage() {
                       min={1}
                       max={365}
                       {...form.getInputProps(
-                        `${activeTab.toLowerCase()}.medium`
+                        `${activeTab.toLowerCase()}.medium`,
                       )}
                       w="100%"
                     />
