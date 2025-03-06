@@ -1,9 +1,9 @@
-// app/api/vuln/export/route.ts
+// app/api/vuln/carryforward/export/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/utils/verifyAuth";
 import prisma from "@/lib/prisma";
 
-interface ExportedVulnerability {
+interface ExportedCarryForwardVulnerability {
   "Asset IP": string;
   "Asset OS": string;
   Port: string | number;
@@ -15,18 +15,19 @@ interface ExportedVulnerability {
   Description: string;
   Impact: string;
   Recommendations: string;
-  References: string;
-  Company: string;
-  Status: string;
-  Quarter: string;
-  "Created At": string;
+  "Source Quarter": string;
+  "Target Quarter": string;
+  "Status in Source": string;
+  "Status in Target": string;
+  "First Seen": string;
+  "Last Updated": string;
   [key: string]: string | number; // Index signature to allow dynamic property access
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const { user } = await verifyAuth();
-    if (!user) {
+    const auth = await verifyAuth();
+    if (!auth.authenticated) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -35,76 +36,174 @@ export async function GET(req: NextRequest) {
     const companyId = searchParams.get("companyId")
       ? Number(searchParams.get("companyId"))
       : null;
-    const tab = searchParams.get("tab") || "all";
+    const sourceQuarter = searchParams.get("sourceQuarter");
+    const targetQuarter = searchParams.get("targetQuarter");
+    const status = searchParams.get("status") || "unresolved";
+    const riskLevels =
+      searchParams.get("riskLevels")?.split(",").filter(Boolean) || [];
+    const assetIps =
+      searchParams.get("assetIps")?.split(",").filter(Boolean) || [];
+    const ports =
+      searchParams.get("ports")?.split(",").filter(Boolean).map(Number) || [];
 
-    const where: Record<string, unknown> = {
-      title: { contains: search, mode: "insensitive" },
+    // Validation
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Company ID is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!sourceQuarter || !targetQuarter) {
+      return NextResponse.json(
+        { error: "Source and target quarters are required" },
+        { status: 400 },
+      );
+    }
+
+    if (sourceQuarter === targetQuarter) {
+      return NextResponse.json(
+        { error: "Source and target quarters must be different" },
+        { status: 400 },
+      );
+    }
+
+    // Build where clause
+    const where: any = {
+      companyId,
+      ...(search ? { title: { contains: search, mode: "insensitive" } } : {}),
+      ...(riskLevels.length > 0 ? { riskLevel: { in: riskLevels } } : {}),
+      ...(assetIps.length > 0 ? { assetIp: { in: assetIps } } : {}),
+      ...(ports.length > 0 ? { port: { in: ports } } : {}),
     };
 
-    // Company access control
-    if (user.role !== "Admin") {
-      where.companyId = user.companyId;
-    } else if (companyId) {
-      where.companyId = companyId;
-    }
-
-    // Tab filtering
-    if (tab === "resolved") {
-      where.quarterData = {
-        some: {
-          isResolved: true,
-        },
-      };
-    } else if (tab === "unresolved") {
-      where.quarterData = {
-        some: {
-          isResolved: false,
-        },
-      };
-    }
-
-    const vulnerabilities = await prisma.vulnerability.findMany({
-      where,
-      include: {
-        company: {
-          select: {
-            name: true,
-          },
-        },
-        quarterData: {
-          select: {
-            isResolved: true,
-            quarter: true,
-          },
-          orderBy: {
-            fileUploadDate: "desc",
-          },
-          take: 1,
-        },
+    // Get vulnerabilities in the source quarter
+    const sourceVulnerabilities = await prisma.vulnerabilityQuarter.findMany({
+      where: {
+        quarter: sourceQuarter,
+        vulnerability: where,
       },
-      orderBy: {
-        createdAt: "desc",
+      select: {
+        vulnerabilityId: true,
       },
     });
 
-    const csvData = vulnerabilities.map((vuln) => ({
-      "Asset IP": vuln.assetIp,
-      "Asset OS": vuln.assetOS || "",
-      Port: vuln.port || "",
-      Protocol: vuln.protocol || "",
-      Title: vuln.title,
-      "CVE IDs": vuln.cveId.join(", "),
-      "Risk Level": vuln.riskLevel,
-      "CVSS Score": vuln.cvssScore || "",
-      Description: vuln.description.replace(/[\n\r]+/g, " "),
-      Impact: vuln.impact.replace(/[\n\r]+/g, " "),
-      Recommendations: vuln.recommendations.replace(/[\n\r]+/g, " "),
-      References: vuln.references.join(", "),
-      Company: vuln.company.name,
-      Status: vuln.quarterData[0]?.isResolved ? "Resolved" : "Unresolved",
-      Quarter: vuln.quarterData[0]?.quarter || "",
-      "Created At": vuln.createdAt.toISOString().split("T")[0],
-    }));
+    // Get vulnerabilities in the target quarter
+    const targetVulnerabilities = await prisma.vulnerabilityQuarter.findMany({
+      where: {
+        quarter: targetQuarter,
+        isResolved: status === "resolved",
+      },
+      select: {
+        vulnerabilityId: true,
+      },
+    });
+
+    // Create sets for efficient lookups
+    const sourceVulnIds = new Set(
+      sourceVulnerabilities.map(
+        (v: { vulnerabilityId: string }) => v.vulnerabilityId,
+      ),
+    );
+    const targetVulnIds = new Set(
+      targetVulnerabilities.map(
+        (v: { vulnerabilityId: string }) => v.vulnerabilityId,
+      ),
+    );
+
+    // Find the intersection (vulnerabilities in both quarters)
+    const vulnIds = Array.from(sourceVulnIds).filter((id) =>
+      targetVulnIds.has(id),
+    );
+
+    // Split the IDs into chunks to avoid too many bind variables
+    const CHUNK_SIZE = 1000; // PostgreSQL typically allows up to 32767 parameters, but we'll be conservative
+    const idChunks: string[][] = [];
+
+    for (let i = 0; i < vulnIds.length; i += CHUNK_SIZE) {
+      idChunks.push(vulnIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    // Define the vulnerability type based on prisma return type
+    type VulnerabilityWithQuarters = Awaited<
+      ReturnType<typeof prisma.vulnerability.findFirst>
+    > & {
+      quarterData: {
+        id: string;
+        quarter: string;
+        isResolved: boolean;
+        fileUploadDate: Date;
+      }[];
+    };
+
+    // Fetch vulnerabilities for each chunk and merge the results
+    let carryForwardVulnerabilities: VulnerabilityWithQuarters[] = [];
+
+    for (const chunk of idChunks) {
+      const vulnerabilities = (await prisma.vulnerability.findMany({
+        where: {
+          id: { in: chunk },
+        },
+        include: {
+          quarterData: true,
+        },
+      })) as VulnerabilityWithQuarters[];
+
+      carryForwardVulnerabilities = [
+        ...carryForwardVulnerabilities,
+        ...vulnerabilities,
+      ];
+    }
+
+    // Sort the results by creation date
+    carryForwardVulnerabilities.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    // Process the data for CSV export
+    const csvData = carryForwardVulnerabilities.map((vuln) => {
+      // Find source and target quarter data
+      const sourceQuarterData = vuln.quarterData.find(
+        (q) => q.quarter === sourceQuarter,
+      );
+      const targetQuarterData = vuln.quarterData.find(
+        (q) => q.quarter === targetQuarter,
+      );
+
+      // Format dates
+      const firstSeenDate = sourceQuarterData?.fileUploadDate
+        ? new Date(sourceQuarterData.fileUploadDate).toISOString().split("T")[0]
+        : "N/A";
+
+      const lastUpdatedDate = targetQuarterData?.fileUploadDate
+        ? new Date(targetQuarterData.fileUploadDate).toISOString().split("T")[0]
+        : "N/A";
+
+      return {
+        "Asset IP": vuln.assetIp,
+        "Asset OS": vuln.assetOS || "",
+        Port: vuln.port || "",
+        Protocol: vuln.protocol || "",
+        Title: vuln.title,
+        "CVE IDs": vuln.cveId.join(", "),
+        "Risk Level": vuln.riskLevel,
+        "CVSS Score": vuln.cvssScore || "",
+        Description: vuln.description.replace(/[\n\r]+/g, " "),
+        Impact: vuln.impact.replace(/[\n\r]+/g, " "),
+        Recommendations: vuln.recommendations.replace(/[\n\r]+/g, " "),
+        "Source Quarter": sourceQuarter,
+        "Target Quarter": targetQuarter,
+        "Status in Source": sourceQuarterData?.isResolved
+          ? "Resolved"
+          : "Unresolved",
+        "Status in Target": targetQuarterData?.isResolved
+          ? "Resolved"
+          : "Unresolved",
+        "First Seen": firstSeenDate,
+        "Last Updated": lastUpdatedDate,
+      };
+    });
 
     const headers = Object.keys(csvData[0] || {});
     const csv = [
@@ -112,21 +211,33 @@ export async function GET(req: NextRequest) {
       ...csvData.map((row) =>
         headers
           .map((header) => {
-            const value = row[header as keyof ExportedVulnerability];
+            const value =
+              row[header as keyof ExportedCarryForwardVulnerability];
             return JSON.stringify(value?.toString() || "").replace(/\\n/g, " ");
           })
           .join(","),
       ),
     ].join("\n");
 
+    const fileName = `carry-forward-vulnerabilities-${sourceQuarter}-to-${targetQuarter}-${status}-${new Date().toISOString().split("T")[0]}.csv`;
+
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv",
-        "Content-Disposition": `attachment; filename="vulnerabilities-${new Date().toISOString().split("T")[0]}.csv"`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
       },
     });
   } catch (error) {
-    console.error("Export error:", error);
-    return NextResponse.json({ error: "Export failed" }, { status: 500 });
+    console.error(
+      "Export error:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return NextResponse.json(
+      {
+        error: "Export failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    );
   }
 }

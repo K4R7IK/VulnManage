@@ -391,6 +391,7 @@ export default function OverdueVulnerabilitiesPage() {
           direction={{ base: "column", md: "row" }}
           mb="md"
           wrap="wrap"
+          justify="space-around"
         >
           {/* Company selector (for admins) */}
           {userRole === "Admin" && (
@@ -451,6 +452,18 @@ export default function OverdueVulnerabilitiesPage() {
             value={selectedAssetTypes}
             onChange={handleAssetTypeChange}
             w={{ base: "100%", md: "200px" }}
+            disabled={loading}
+          />
+          <Select
+            label="Items per page"
+            data={itemsPerPageOptions}
+            value={itemsPerPage.toString()}
+            onChange={(value) => {
+              setItemsPerPage(Number(value));
+              setPage(1);
+              setCursors({});
+            }}
+            w={120}
             disabled={loading}
           />
         </Flex>
@@ -528,18 +541,6 @@ export default function OverdueVulnerabilitiesPage() {
 
           {/* Pagination controls */}
           <Flex justify="space-between" align="center" mb="md">
-            <Select
-              data={itemsPerPageOptions}
-              value={itemsPerPage.toString()}
-              onChange={(value) => {
-                setItemsPerPage(Number(value));
-                setPage(1);
-                setCursors({});
-              }}
-              w={120}
-              disabled={loading}
-            />
-
             {totalPages > 1 && (
               <Pagination
                 total={totalPages}
