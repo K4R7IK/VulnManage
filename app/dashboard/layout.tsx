@@ -23,6 +23,7 @@ import {
   IconLayoutDashboard,
   IconHourglassEmpty,
   IconTimeline,
+  IconArrowsRightLeft,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useDisclosure } from "@mantine/hooks";
@@ -177,6 +178,15 @@ export default function DashboardLayout({
               href="/dashboard/overdue"
               active
               label="View Overdue"
+            ></NavLink>
+            <NavLink
+              variant="subtle"
+              color="black"
+              leftSection={<IconArrowsRightLeft size={16} />}
+              component="a"
+              href="/dashboard/carryforward"
+              active
+              label="Carry Forward"
             ></NavLink>
           </Stack>
           <Stack gap={0}>
