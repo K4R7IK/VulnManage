@@ -21,9 +21,11 @@ import {
   IconUsers,
   IconListDetails,
   IconLayoutDashboard,
+  IconHourglassEmpty,
+  IconTimeline,
+  IconArrowsRightLeft,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useDisclosure } from "@mantine/hooks";
 
 export default function DashboardLayout({
@@ -168,6 +170,24 @@ export default function DashboardLayout({
               active
               label="View Table"
             ></NavLink>
+            <NavLink
+              variant="subtle"
+              color="black"
+              leftSection={<IconHourglassEmpty size={16} />}
+              component="a"
+              href="/dashboard/overdue"
+              active
+              label="View Overdue"
+            ></NavLink>
+            <NavLink
+              variant="subtle"
+              color="black"
+              leftSection={<IconArrowsRightLeft size={16} />}
+              component="a"
+              href="/dashboard/carryforward"
+              active
+              label="Carry Forward"
+            ></NavLink>
           </Stack>
           <Stack gap={0}>
             {user?.role === "Admin" && (
@@ -178,6 +198,17 @@ export default function DashboardLayout({
                 component="a"
                 href="/dashboard/upload"
                 label="Upload Data"
+                active
+              ></NavLink>
+            )}
+            {user?.role === "Admin" && (
+              <NavLink
+                variant="subtle"
+                color="black"
+                leftSection={<IconTimeline size={16} />}
+                component="a"
+                href="/dashboard/sla"
+                label="Update SLA"
                 active
               ></NavLink>
             )}

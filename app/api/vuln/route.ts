@@ -1,6 +1,23 @@
+//app/api/vuln/route.ts
 import { verifyAuth } from "@/utils/verifyAuth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+
+// Define types for the where clause
+interface WhereClause {
+  companyId: number;
+  riskLevel?: { in: string[] };
+  assetIp?: { in: string[] };
+  port?: { in: number[] };
+  title?: { contains: string; mode: string };
+  quarterData?: {
+    some: {
+      quarter?: string;
+      isResolved?: boolean;
+    };
+  };
+  [key: string]: unknown;
+}
 
 export async function GET(request: Request) {
   try {
@@ -35,7 +52,7 @@ export async function GET(request: Request) {
     }
 
     // Build where clause
-    const whereClause: any = {
+    const whereClause: WhereClause = {
       companyId: Number(companyId),
     };
 
@@ -57,9 +74,9 @@ export async function GET(request: Request) {
     if (quarter || status) {
       whereClause.quarterData = {
         some: {
-          ...(quarter && { quarter }),
-          ...(status === "resolved" && { isResolved: true }),
-          ...(status === "unresolved" && { isResolved: false }),
+          ...(quarter ? { quarter } : {}),
+          ...(status === "resolved" ? { isResolved: true } : {}),
+          ...(status === "unresolved" ? { isResolved: false } : {}),
         },
       };
     }
@@ -78,7 +95,7 @@ export async function GET(request: Request) {
             id: true,
             quarter: true,
             isResolved: true,
-            quarterDate: true,
+            fileUploadDate: true,
           },
         },
       },

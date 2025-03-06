@@ -80,7 +80,7 @@ export default function UserManagementPage() {
         });
         const companiesData = await companiesRes.json();
         setCompanies(companiesData);
-      } catch (error) {
+      } catch (_) {
         setError("Failed to fetch data.");
       } finally {
         setLoading(false);
@@ -114,7 +114,7 @@ export default function UserManagementPage() {
 
   const handleChange = (
     field: keyof (User & { password: string }),
-    value: any
+    value: any,
   ) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -143,9 +143,9 @@ export default function UserManagementPage() {
       setUsers((prev) =>
         editingUser
           ? prev.map((user) =>
-              user.id === updatedUser.id ? updatedUser : user
+              user.id === updatedUser.id ? updatedUser : user,
             )
-          : [...prev, updatedUser]
+          : [...prev, updatedUser],
       );
 
       setUserModalOpen(false);

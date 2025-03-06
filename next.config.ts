@@ -5,12 +5,13 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["@mantine/core", "@mantine/hooks"],
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  output: "standalone",
+  //eslint: {
+  //  ignoreDuringBuilds: true,
+  //},
+  //typescript: {
+  //  ignoreBuildErrors: true,
+  //},
 };
 
 export default nextConfig;

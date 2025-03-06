@@ -27,13 +27,14 @@ async function verifyAuth() {
         authenticated: false,
         response: NextResponse.json(
           { error: "Invalid token" },
-          { status: 401 }
+          { status: 401 },
         ),
       };
     }
 
     return { authenticated: true, user: payload };
-  } catch (error) {
+  } catch (_) {
+    // Renamed error parameter to _ since it's not used
     return {
       authenticated: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
@@ -65,10 +66,11 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ token: newToken.token });
-  } catch (error) {
+  } catch (_) {
+    // Renamed error parameter to _ since it's not used
     return NextResponse.json(
       { error: "Failed to create token" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

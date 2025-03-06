@@ -27,11 +27,11 @@ export async function GET(request: Request) {
       },
       select: {
         quarter: true,
-        quarterDate: true,
+        fileUploadDate: true,
       },
       distinct: ["quarter"],
       orderBy: {
-        quarterDate: "desc",
+        fileUploadDate: "desc",
       },
     });
 

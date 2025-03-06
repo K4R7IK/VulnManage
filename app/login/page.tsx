@@ -60,7 +60,13 @@ export default function LoginPage() {
   };
 
   return (
-    <Flex direction="column" justify="center" align="center" mih="100vh">
+    <Flex
+      direction="column"
+      justify="center"
+      align="center"
+      mih="100vh"
+      bg="#f8f8f8"
+    >
       <Paper shadow="xl" p={30} radius="md" w="30%" maw="500px" withBorder>
         <Center>
           <Title size="h1">Welcome</Title>

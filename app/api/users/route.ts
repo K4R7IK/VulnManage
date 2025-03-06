@@ -4,7 +4,9 @@ import prisma from "@/lib/prisma";
 import bcrypt from "bcrypt";
 import { verifyAuth } from "@/utils/verifyAuth";
 
-const SECRET_KEY = process.env.JWT_SECRET; // Ensure this is set in .env
+// Ensure this is set in .env
+// Removed unused SECRET_KEY variable
+// const SECRET_KEY = process.env.JWT_SECRET;
 
 // Fetch all users (GET)
 export async function GET() {
@@ -27,7 +29,7 @@ export async function GET() {
     console.error("Error fetching users:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
     if (!name || !email || !password || !role) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
     console.error("Error creating user:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -82,7 +84,7 @@ export async function PUT(req: Request) {
     if (!id) {
       return NextResponse.json(
         { error: "User ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -101,7 +103,7 @@ export async function PUT(req: Request) {
     console.error("Error updating user:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -118,7 +120,7 @@ export async function DELETE(req: Request) {
     if (!id) {
       return NextResponse.json(
         { error: "User ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -129,7 +131,7 @@ export async function DELETE(req: Request) {
     console.error("Error deleting user:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

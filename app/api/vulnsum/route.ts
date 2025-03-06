@@ -21,10 +21,11 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(summaries);
-  } catch (error) {
+  } catch (_) {
+    // Renamed unused error parameter to _
     return NextResponse.json(
       { error: "Failed to fetch vulnerability summaries" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
