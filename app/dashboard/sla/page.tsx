@@ -87,8 +87,8 @@ interface FormValues {
 // Default SLA values
 const defaultSLAs: FormValues = {
   internet: { critical: 7, high: 14, medium: 30, low: 60 },
-  intranet: { critical: 14, high: 30, medium: 60, low: 90 },
-  endpoint: { critical: 30, high: 60, medium: 90, low: 120 },
+  intranet: { critical: 7, high: 14, medium: 30, low: 60 },
+  endpoint: { critical: 7, high: 14, medium: 30, low: 60 },
 };
 
 export default function SLAManagementPage() {

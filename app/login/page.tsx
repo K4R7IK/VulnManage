@@ -1,7 +1,7 @@
-// app/login/page.tsx
+//app/login/page.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   TextInput,
@@ -29,6 +29,7 @@ interface LoginForm {
 
 export default function LoginPage() {
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
   const { login, isLoading, error, user } = useAuth();
 
   const form = useForm<LoginForm>({
@@ -42,16 +43,21 @@ export default function LoginPage() {
     },
   });
 
+  // Set isClient to true after first render
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   // Redirect if already logged in
   useEffect(() => {
-    if (user) {
+    if (isClient && user) {
       router.replace("/dashboard");
     }
-  }, [user, router]);
+  }, [user, router, isClient]);
 
   const handleSubmit = async (values: LoginForm) => {
     try {
-      await login(values.email, values.password);
+      await login(values.email, values.password, values.rememberMe);
       router.push("/dashboard");
     } catch (error) {
       // Error handling is managed by the useAuth hook
@@ -76,7 +82,7 @@ export default function LoginPage() {
           Enter your credentials to log in
         </Text>
 
-        {error && (
+        {isClient && error && (
           <Alert
             icon={<IconAlertCircle size={16} />}
             title="Login Failed"

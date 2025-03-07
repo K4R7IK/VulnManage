@@ -505,7 +505,7 @@ export default function CarryForwardPage() {
       </Affix>
 
       {/* Page title and description */}
-      <Paper p="md" withBorder>
+      <Paper p="md" shadow="sm">
         <Title order={2}>Vulnerability Carry Forward</Title>
         <Text c="dimmed" size="sm" mt={5}>
           Track vulnerabilities that persist between quarters to identify
@@ -575,7 +575,7 @@ export default function CarryForwardPage() {
       </Grid>
 
       {/* Quarter Selection Section */}
-      <Paper p="md" withBorder>
+      <Paper p="md" shadow="sm">
         <Grid miw="100%">
           <Grid.Col span={{ base: 12, md: 5 }}>
             <Select
