@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Paper,
   Title,
@@ -80,9 +81,21 @@ export default function UploadPage() {
     quarterType: "new",
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [operationId, setOperationId] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [operationId, setOperationId] = useState<string | null>(() => {
+    // Check localStorage for saved operationId on component mount
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("uploadOperationId");
+    }
+    return null;
+  });
   const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+
+  // Reference for polling interval - using number type instead of NodeJS.Timeout
+  const pollingIntervalRef = useRef<number | null>(null);
+  const pollFailCount = useRef(0);
+  const MAX_POLL_FAILS = 10; // Maximum number of consecutive poll failures before giving up
 
   // Fetch companies
   useEffect(() => {
@@ -140,71 +153,150 @@ export default function UploadPage() {
     fetchQuarters();
   }, [formData.companyId]);
 
-  // Poll for progress updates when operation is in progress
+  // Setup or cleanup polling interval
   useEffect(() => {
-    if (!operationId) return;
+    // Start polling if we have an operationId
+    if (operationId) {
+      startProgressPolling();
+    } else {
+      // If no operationId, reset uploading state
+      setIsUploading(false);
+    }
 
-    const fetchProgress = async () => {
-      try {
-        const res = await fetch(`/api/upload/progress?id=${operationId}`);
-        if (!res.ok) {
-          if (res.status === 404) {
-            // Operation not found, stop polling
-            setOperationId(null);
-            return;
-          }
-          throw new Error("Failed to fetch progress");
-        }
-
-        const data = await res.json();
-        setProgressData(data);
-
-        // Stop polling if completed or error
-        if (data.status === "completed" || data.status === "error") {
-          if (data.status === "completed") {
-            notifications.show({
-              title: "Success",
-              message: "File processed successfully!",
-              color: "green",
-              icon: <IconCheck />,
-            });
-            // Reset form on completion
-            setFormData({
-              companyId: "",
-              quarter: "",
-              fileUploadDate: null,
-              file: null,
-              assetOS: "",
-              quarterType: "new",
-            });
-            router.refresh();
-          }
-
-          if (data.status === "error") {
-            notifications.show({
-              title: "Error",
-              message: "Processing failed. See details in the upload page.",
-              color: "red",
-              icon: <IconX />,
-            });
-            setErrorDetails(data.error || "Unknown error occurred");
-          }
-
-          // Clear operation ID to stop polling
-          setOperationId(null);
-        }
-      } catch (error) {
-        console.error("Error fetching progress:", error);
+    // Cleanup function
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
       }
     };
+  }, [operationId]);
 
-    // Immediately fetch progress
+  // Function to start polling for progress
+  const startProgressPolling = useCallback(() => {
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Reset poll failure counter
+    pollFailCount.current = 0;
+
+    // Save operationId to localStorage
+    if (operationId && typeof window !== "undefined") {
+      localStorage.setItem("uploadOperationId", operationId);
+    }
+
+    // Set initial loading state
+    setIsUploading(true);
+
+    // Start a new polling interval using window.setInterval instead of NodeJS.Timeout
+    pollingIntervalRef.current = window.setInterval(fetchProgress, 2000);
+
+    // Do an immediate fetch
     fetchProgress();
+  }, [operationId]);
 
-    // Then poll every 2 seconds
-    const interval = setInterval(fetchProgress, 2000);
+  // Function to fetch progress
+  const fetchProgress = useCallback(async () => {
+    if (!operationId) return;
 
-    return () => clearInterval(interval);
+    try {
+      const res = await fetch(`/api/upload/progress?id=${operationId}`);
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch progress: ${res.status}`);
+      }
+
+      const data = await res.json();
+      console.log("Progress update:", data);
+      setProgressData(data);
+
+      // Reset the failure counter on successful fetch
+      pollFailCount.current = 0;
+
+      // Update uploading state
+      setIsUploading(data.status === "pending" || data.status === "processing");
+
+      // Stop polling if completed or error
+      if (data.status === "completed" || data.status === "error") {
+        if (data.status === "completed") {
+          notifications.show({
+            title: "Success",
+            message: "File processed successfully!",
+            color: "green",
+            icon: <IconCheck />,
+          });
+
+          // Reset form on completion
+          setFormData({
+            companyId: "",
+            quarter: "",
+            fileUploadDate: null,
+            file: null,
+            assetOS: "",
+            quarterType: "new",
+          });
+
+          // Clear operation ID from localStorage
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("uploadOperationId");
+          }
+
+          router.refresh();
+        }
+
+        if (data.status === "error") {
+          notifications.show({
+            title: "Error",
+            message: "Processing failed. See details in the upload page.",
+            color: "red",
+            icon: <IconX />,
+          });
+          setErrorDetails(data.error || "Unknown error occurred");
+        }
+
+        // Clear operation ID to stop polling
+        setOperationId(null);
+
+        // Immediately clear the interval
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching progress:", error);
+
+      // Increment the failure counter
+      pollFailCount.current += 1;
+
+      // If too many consecutive failures, stop polling
+      if (pollFailCount.current >= MAX_POLL_FAILS) {
+        console.error("Too many polling failures, stopping polling");
+
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+
+        // Clear the operation ID and uploading state
+        setOperationId(null);
+        setIsUploading(false);
+
+        // Show error notification
+        notifications.show({
+          title: "Connection Lost",
+          message:
+            "Lost connection to the server. The upload may still be processing in the background.",
+          color: "red",
+          icon: <IconX />,
+        });
+      }
+
+      // Don't stop polling on fetch errors yet, as the server might just be temporarily unavailable
+      // We'll stop only after MAX_POLL_FAILS consecutive failures
+    }
   }, [operationId, router]);
 
   const validateFile = (file: File | null) => {
@@ -271,12 +363,17 @@ export default function UploadPage() {
         return;
       }
 
+      // Set uploading state immediately
+      setIsUploading(true);
       setIsLoading(true);
 
       const uploadData = new FormData();
       uploadData.append("companyId", formData.companyId);
       uploadData.append("quarter", formData.quarter);
-      uploadData.append("fileUploadDate", formData.fileUploadDate.toISOString());
+      uploadData.append(
+        "fileUploadDate",
+        formData.fileUploadDate.toISOString(),
+      );
       uploadData.append("file", formData.file as File);
       uploadData.append("assetOS", formData.assetOS);
 
@@ -293,6 +390,10 @@ export default function UploadPage() {
       // Get operation ID from response
       const data = await res.json();
       setOperationId(data.operationId);
+      console.log("Upload started with operation ID:", data.operationId);
+
+      // Start polling for progress updates
+      // This will be triggered by the useEffect that watches operationId
 
       // Show initial notification
       notifications.show({
@@ -301,10 +402,12 @@ export default function UploadPage() {
         color: "blue",
         icon: <IconUpload />,
       });
+
       setIsLoading(false);
     } catch (err) {
       console.error(err);
       setIsLoading(false);
+      setIsUploading(false);
       notifications.show({
         title: "Error uploading the file",
         message: err instanceof Error ? err.message : "File upload failed.",
@@ -319,7 +422,11 @@ export default function UploadPage() {
     const elapsedMs = Date.now() - startTime;
     const seconds = Math.floor(elapsedMs / 1000);
     const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
 
+    if (hours > 0) {
+      return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    }
     if (minutes > 0) {
       return `${minutes}m ${seconds % 60}s`;
     }
@@ -339,6 +446,9 @@ export default function UploadPage() {
         return "gray";
     }
   };
+
+  // Check if quarters are available for selection
+  const isQuartersDisabled = quarters.length === 0 || isLoading || isUploading;
 
   return (
     <Flex justify="center" align="center" p="md">
@@ -403,7 +513,7 @@ export default function UploadPage() {
         {/* Upload form */}
         <Stack>
           <Select
-            disabled={isLoading || !!operationId}
+            disabled={isLoading || isUploading}
             label="Select Company"
             placeholder="Choose a company"
             data={companies.map((company) => ({
@@ -424,7 +534,7 @@ export default function UploadPage() {
           />
 
           <Select
-            disabled={isLoading || !!operationId}
+            disabled={isLoading || isUploading}
             label="Asset OS"
             placeholder="Select operating system"
             data={assetOSOptions}
@@ -448,21 +558,24 @@ export default function UploadPage() {
             }
             label="Quarter Type"
             required
-            // disabled={isLoading || !!operationId}
           >
             <Group mt="xs">
-              <Radio value="new" label="New Quarter" />
+              <Radio
+                value="new"
+                label="New Quarter"
+                disabled={isLoading || isUploading}
+              />
               <Radio
                 value="existing"
                 label="Existing Quarter"
-                disabled={quarters.length === 0 || isLoading || !!operationId}
+                disabled={isQuartersDisabled}
               />
             </Group>
           </Radio.Group>
 
           {formData.quarterType === "new" ? (
             <TextInput
-              disabled={isLoading || !!operationId}
+              disabled={isLoading || isUploading}
               label="New Quarter Name"
               placeholder="Enter quarter name"
               value={formData.quarter}
@@ -476,7 +589,7 @@ export default function UploadPage() {
             />
           ) : (
             <Select
-              disabled={isLoading || !!operationId}
+              disabled={isLoading || isUploading}
               label="Select Existing Quarter"
               placeholder="Choose a quarter"
               data={quarters.map((q) => ({
@@ -494,7 +607,7 @@ export default function UploadPage() {
           )}
 
           <DateInput
-            disabled={isLoading || !!operationId}
+            disabled={isLoading || isUploading}
             label="Date"
             placeholder="Set File Upload Date"
             clearable
@@ -509,7 +622,7 @@ export default function UploadPage() {
           />
 
           <FileInput
-            disabled={isLoading || !!operationId}
+            disabled={isLoading || isUploading}
             label="Select File"
             placeholder="Select .csv or .xlsx file"
             accept=".csv,.xlsx"
@@ -526,8 +639,8 @@ export default function UploadPage() {
 
           <Button
             onClick={handleUpload}
-            loading={isLoading && !operationId}
-            disabled={isLoading || !!operationId}
+            loading={isLoading}
+            disabled={isLoading || isUploading}
             color="blue"
             leftSection={<IconUpload size={16} />}
           >
