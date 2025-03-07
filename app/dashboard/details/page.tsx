@@ -454,9 +454,9 @@ export default function DetailsPage() {
       </Affix>
 
       {/* Page title and description */}
-      <Paper p="md" withBorder>
+      <Paper p="md" shadow="sm">
         <Title order={2}>Vulnerability Details</Title>
-        <Text color="dimmed" size="sm" mt={5}>
+        <Text c="dimmed" size="sm" mt={5}>
           View and filter all vulnerabilities in the system.
         </Text>
       </Paper>
@@ -518,7 +518,7 @@ export default function DetailsPage() {
       </Grid>
 
       {/* Filters Section */}
-      <Paper p="md" withBorder>
+      <Paper p="md" shadow="sm">
         <Grid miw="100%">
           <Grid.Col span={{ base: 12, sm: 6, lg: 3 }}>
             <MultiSelect

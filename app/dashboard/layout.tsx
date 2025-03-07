@@ -34,8 +34,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
-  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure();
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure(false);
+  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(false);
   const [opened, { close, open }] = useDisclosure(false);
   const [user, setUser] = useState<{
     userId: number;
@@ -43,11 +43,17 @@ export default function DashboardLayout({
     email: string;
     role: string;
   } | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     router.push("/login");
   };
+
+  // Add this useEffect to handle client-side only rendering
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -61,8 +67,10 @@ export default function DashboardLayout({
         console.error("Error fetching user data:", error);
       }
     };
-    fetchUser();
-  }, []);
+    if (isClient) {
+      fetchUser();
+    }
+  }, [isClient]);
 
   return (
     <AppShell
@@ -95,50 +103,52 @@ export default function DashboardLayout({
             visibleFrom="sm"
             size="sm"
           />
-          <Popover
-            width={250}
-            position="bottom-start"
-            offset={4}
-            withArrow
-            arrowPosition="side"
-            arrowOffset={5}
-            opened={opened}
-          >
-            <Popover.Target>
-              <Avatar
-                key={user?.name}
-                name={user?.name}
-                color="initials"
-                allowedInitialsColors={["blue", "red", "purple"]}
-                onMouseEnter={open}
-                onMouseLeave={close}
-              />
-            </Popover.Target>
-            <Popover.Dropdown>
-              <Button
-                component={Text}
-                rightSection={<IconUser size={14} />}
-                variant="transparent"
-                color="black"
-                fullWidth
-                size="compact-sm"
-                justify="space-between"
-              >
-                {user?.name}
-              </Button>
-              <Button
-                component={Text}
-                rightSection={<IconMail size={14} />}
-                variant="transparent"
-                color="black"
-                fullWidth
-                size="compact-sm"
-                justify="space-between"
-              >
-                {user?.email}
-              </Button>
-            </Popover.Dropdown>
-          </Popover>
+          {isClient && (
+            <Popover
+              width={250}
+              position="bottom-start"
+              offset={4}
+              withArrow
+              arrowPosition="side"
+              arrowOffset={5}
+              opened={opened}
+            >
+              <Popover.Target>
+                <Avatar
+                  key={user?.name || "guest"}
+                  name={user?.name || "Guest"}
+                  color="initials"
+                  allowedInitialsColors={["blue", "red", "purple"]}
+                  onMouseEnter={open}
+                  onMouseLeave={close}
+                />
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Button
+                  component={Text}
+                  rightSection={<IconUser size={14} />}
+                  variant="transparent"
+                  color="black"
+                  fullWidth
+                  size="compact-sm"
+                  justify="space-between"
+                >
+                  {user?.name || "Guest"}
+                </Button>
+                <Button
+                  component={Text}
+                  rightSection={<IconMail size={14} />}
+                  variant="transparent"
+                  color="black"
+                  fullWidth
+                  size="compact-sm"
+                  justify="space-between"
+                >
+                  {user?.email || ""}
+                </Button>
+              </Popover.Dropdown>
+            </Popover>
+          )}
         </Group>
         <Image
           src="/etek.svg"
@@ -190,38 +200,36 @@ export default function DashboardLayout({
             ></NavLink>
           </Stack>
           <Stack gap={0}>
-            {user?.role === "Admin" && (
-              <NavLink
-                variant="subtle"
-                color="black"
-                leftSection={<IconUpload size={16} />}
-                component="a"
-                href="/dashboard/upload"
-                label="Upload Data"
-                active
-              ></NavLink>
-            )}
-            {user?.role === "Admin" && (
-              <NavLink
-                variant="subtle"
-                color="black"
-                leftSection={<IconTimeline size={16} />}
-                component="a"
-                href="/dashboard/sla"
-                label="Update SLA"
-                active
-              ></NavLink>
-            )}
-            {user?.role === "Admin" && (
-              <NavLink
-                color="black"
-                leftSection={<IconUsers size={16} />}
-                component="a"
-                href="/dashboard/users"
-                label="User Mangement"
-                variant="subtle"
-                active
-              ></NavLink>
+            {isClient && user?.role === "Admin" && (
+              <>
+                <NavLink
+                  variant="subtle"
+                  color="black"
+                  leftSection={<IconUpload size={16} />}
+                  component="a"
+                  href="/dashboard/upload"
+                  label="Upload Data"
+                  active
+                ></NavLink>
+                <NavLink
+                  variant="subtle"
+                  color="black"
+                  leftSection={<IconTimeline size={16} />}
+                  component="a"
+                  href="/dashboard/sla"
+                  label="Update SLA"
+                  active
+                ></NavLink>
+                <NavLink
+                  color="black"
+                  leftSection={<IconUsers size={16} />}
+                  component="a"
+                  href="/dashboard/users"
+                  label="User Management"
+                  variant="subtle"
+                  active
+                ></NavLink>
+              </>
             )}
             <NavLink
               onClick={handleLogout}
