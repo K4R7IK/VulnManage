@@ -49,3 +49,4 @@ next-env.d.ts
 jest.config.ts
 tests/
 tmp/*
+logs/*

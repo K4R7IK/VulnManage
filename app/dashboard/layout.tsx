@@ -25,15 +25,14 @@ import {
   IconTimeline,
   IconArrowsRightLeft,
 } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
 import { useDisclosure } from "@mantine/hooks";
+import { deleteSession } from "@/lib/session";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure();
   const [opened, { close, open }] = useDisclosure(false);
@@ -43,11 +42,6 @@ export default function DashboardLayout({
     email: string;
     role: string;
   } | null>(null);
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    router.push("/login");
-  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -224,7 +218,9 @@ export default function DashboardLayout({
               ></NavLink>
             )}
             <NavLink
-              onClick={handleLogout}
+              onClick={async () => {
+                deleteSession();
+              }}
               leftSection={<IconLogout size={16} />}
               label="Logout"
               color="red"

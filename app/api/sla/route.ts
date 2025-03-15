@@ -1,6 +1,6 @@
 // app/api/sla/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { verifyAuth } from "@/utils/verifyAuth";
 
 // Define types for SLA configurations

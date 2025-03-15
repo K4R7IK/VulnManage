@@ -1,6 +1,6 @@
 // app/api/vuln/overdue/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { verifyAuth } from "@/utils/verifyAuth";
 import { determineAssetType } from "@/utils/slaUtils";
 import { PrismaClient } from "@prisma/client";

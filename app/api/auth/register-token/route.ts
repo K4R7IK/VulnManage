@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import crypto from "crypto"; // For token generation
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";

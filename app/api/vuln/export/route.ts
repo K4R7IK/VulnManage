@@ -1,7 +1,7 @@
 // app/api/vuln/carryforward/export/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAuth } from "@/utils/verifyAuth";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 interface ExportedCarryForwardVulnerability {
   "Asset IP": string;
