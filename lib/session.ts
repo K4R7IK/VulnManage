@@ -49,20 +49,29 @@ export async function createSession(token: string, rememberMe: boolean) {
   }
 }
 
-export async function verifySession() {
+export async function verifySession(details: boolean = false) {
   const token = (await cookies()).get("token")?.value;
   if (!token) {
     redirect("/login");
   }
-  const payload = await decrypt(token);
-  const user = {
-    id: payload?.id,
-    name: payload?.name,
-    email: payload?.email,
-    role: payload?.role,
-    companyId: payload?.companyId,
-  };
-  return user;
+  try {
+    const payload = await decrypt(token);
+    const user = {
+      id: payload?.id,
+      name: payload?.name,
+      email: payload?.email,
+      role: payload?.role,
+      companyId: payload?.companyId,
+    };
+    if (details) {
+      return { success: true, user };
+    } else {
+      return { success: true };
+    }
+  } catch (error) {
+    console.error("Error while verifying session: ", error);
+    redirect("/login");
+  }
 }
 
 export async function deleteSession() {

@@ -1,61 +1,38 @@
 // middleware.ts
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
+import { decrypt } from "./lib/session";
 
-interface JWTPayload {
-  userId: string;
-  email: string;
-  role: string;
+function handleUnauthorized(req: NextRequest) {
+  const loginURL = new URL("/login", req.url);
+  loginURL.searchParams.set("callbackURL", req.nextUrl.pathname);
+  return NextResponse.redirect(loginURL);
 }
 
-// Get JWT secret from environment variables
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is not defined in environment variables");
-}
+export default async function middleware(req: NextRequest) {
+  // Checking if route is protected
+  const isProtectedRoute = req.nextUrl.pathname.startsWith("/dashboard");
 
-export async function middleware(req: NextRequest) {
-  // Exclude static files and API routes if they're under /dashboard
-  if (
-    req.nextUrl.pathname.startsWith("/_next") ||
-    req.nextUrl.pathname.startsWith("/static") ||
-    req.nextUrl.pathname.startsWith("/api")
-  ) {
+  if (!isProtectedRoute) {
     return NextResponse.next();
   }
-
   const token = req.cookies.get("token")?.value;
 
-  // Create login redirect response
-  const handleUnauthorized = () => {
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("from", req.nextUrl.pathname);
-    return NextResponse.redirect(loginUrl);
-  };
-
   if (!token) {
-    return handleUnauthorized();
+    return handleUnauthorized(req);
   }
 
   try {
-    // Verify token using jose
-    const secret = new TextEncoder().encode(JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret);
+    const payload = await decrypt(token);
 
-    // Add user info to request headers
-    const requestHeaders = new Headers(req.headers);
-    requestHeaders.set("x-user-id", payload.userId as string);
-    requestHeaders.set("x-user-role", payload.role as string);
-
-    // Continue with added headers
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
+    if (!payload || !payload.id) {
+      return handleUnauthorized(req);
+    }
+    return NextResponse.next();
   } catch (error) {
-    console.error("Middleware error:", error);
-    return handleUnauthorized();
+    console.error("Token verification failed", error);
+    const response = NextResponse.redirect(new URL("/login", req.url));
+    response.cookies.delete("token");
+    return response;
   }
 }
 
