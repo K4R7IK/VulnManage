@@ -1,7 +1,6 @@
 // app/login/page.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
   TextInput,
   PasswordInput,
@@ -15,10 +14,11 @@ import {
   Alert,
 } from "@mantine/core";
 import Link from "next/link";
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import { loginAction } from "@/actions/login";
 import type { LoginActionState } from "@/types/returnTypes";
 import { IconInfoCircle } from "@tabler/icons-react";
+import { useSearchParams } from "next/navigation";
 
 const patternBackground = {
   backgroundColor: "#f8f8f8",
@@ -28,6 +28,8 @@ const patternBackground = {
 export default function LoginPage() {
   const initState: LoginActionState = { errors: {} };
   const [state, action, pending] = useActionState(loginAction, initState);
+  const searchParams = useSearchParams();
+  const callbackURL = searchParams.get("callbackURL") || "/dashboard";
 
   return (
     <Flex
@@ -80,6 +82,7 @@ export default function LoginPage() {
           />
 
           <Checkbox name="rememberMe" label="Longer session" mt="md" />
+          <input type="hidden" name="callbackURL" value={callbackURL} />
 
           <Button
             fullWidth

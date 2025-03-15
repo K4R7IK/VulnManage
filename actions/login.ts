@@ -13,7 +13,7 @@ const UserWithPassword = UserSchema.extend({
 type User = z.infer<typeof UserWithPassword> | null;
 
 export async function loginAction(
-  prevState: any,
+  _prevState: any,
   formData: FormData,
 ): Promise<LoginActionState> {
   //Validate field
@@ -22,6 +22,8 @@ export async function loginAction(
     password: formData.get("password"),
     rememberMe: formData.get("rememberMe") !== null,
   });
+  let callbackURL = (formData.get("callbackURL") as string) || "/dashboard";
+  callbackURL = callbackURL.startsWith("/") ? callbackURL : "/dashboard";
 
   if (!parseResult.success) {
     console.error(
@@ -97,5 +99,5 @@ export async function loginAction(
       },
     };
   }
-  redirect("/dashboard");
+  redirect(callbackURL);
 }
