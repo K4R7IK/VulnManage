@@ -1,6 +1,6 @@
 // middleware.ts
 import { NextRequest, NextResponse } from "next/server";
-import { decrypt } from "./lib/session";
+import { decrypt } from "@/lib/session";
 
 function handleUnauthorized(req: NextRequest) {
   const loginURL = new URL("/login", req.url);

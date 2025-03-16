@@ -4,3 +4,10 @@ export type LoginActionState = {
     message?: string[];
   };
 };
+
+export type ActionsReturnTypes = {
+  error: {
+    message?: string;
+  };
+  success: boolean;
+};

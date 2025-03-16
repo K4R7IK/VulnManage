@@ -1,10 +1,11 @@
 "use server";
 
 import { jwtVerify, SignJWT } from "jose";
-import { UserSchema } from "@/types/userSchema";
+import { UserSchema } from "@/types/schema";
 import { z } from "zod";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { UserRole } from "@prisma/client";
 
 type User = z.infer<typeof UserSchema>;
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -56,17 +57,17 @@ export async function verifySession(details: boolean = false) {
   }
   try {
     const payload = await decrypt(token);
-    const user = {
-      id: payload?.id,
-      name: payload?.name,
-      email: payload?.email,
-      role: payload?.role,
-      companyId: payload?.companyId,
+    const user: User = {
+      id: payload?.id as number,
+      name: payload?.name as string,
+      email: payload?.email as string,
+      role: payload?.role as UserRole,
+      companyId: payload?.companyId as number,
     };
     if (details) {
       return { success: true, user };
     } else {
-      return { success: true };
+      return { success: true, user: null };
     }
   } catch (error) {
     console.error("Error while verifying session: ", error);

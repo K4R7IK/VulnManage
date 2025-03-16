@@ -11,7 +11,6 @@ import {
   Button,
   Stack,
   Flex,
-  Center,
   Group,
   Radio,
   Progress,
@@ -68,7 +67,7 @@ const assetOSOptions = [
   { value: "security_solution", label: "Security Solution" },
 ];
 
-export default function UploadPage() {
+export default function UploadTab() {
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
@@ -249,7 +248,7 @@ export default function UploadPage() {
         if (data.status === "error") {
           notifications.show({
             title: "Error",
-            message: "Processing failed. See details in the upload page.",
+            message: "Processing failed. See details below.",
             color: "red",
             icon: <IconX />,
           });
@@ -451,203 +450,208 @@ export default function UploadPage() {
   const isQuartersDisabled = quarters.length === 0 || isLoading || isUploading;
 
   return (
-    <Flex justify="center" align="center" p="md">
-      <Paper
-        shadow="md"
-        p="xl"
-        radius="md"
-        withBorder
-        w={{ base: "95%", sm: "80%", md: "60%", lg: "45%" }}
-        maw={700}
-      >
-        <Center mb="md">
-          <Title order={2} fw={700}>
-            Upload Vulnerability Report
-          </Title>
-        </Center>
+    <>
+      <Paper p="md" shadow="xs" mb="md">
+        <Title order={3} mb="sm">
+          Upload Vulnerability Report
+        </Title>
+        <Text size="sm" c="dimmed" mb="md">
+          Upload vulnerability scan data in CSV or Excel format
+        </Text>
+      </Paper>
 
-        {/* Progress section */}
-        {progressData && (
-          <Box mb="xl">
-            <Group justify="space-between" mb="xs">
-              <Text fw={500}>Processing Status</Text>
-              <Badge color={getProgressColor(progressData.status)}>
-                {progressData.status === "pending"
-                  ? "Pending"
-                  : progressData.status === "processing"
-                    ? "Processing"
-                    : progressData.status === "completed"
-                      ? "Completed"
-                      : "Error"}
-              </Badge>
-            </Group>
-            <Progress
-              value={progressData.progress}
-              color={getProgressColor(progressData.status)}
-              size="md"
-              mb="xs"
-              striped={progressData.status === "processing"}
-              animated={progressData.status === "processing"}
-            />
-            <Group justify="space-between">
-              <Text size="sm">{progressData.message}</Text>
-              <Text size="sm" c="dimmed">
-                Elapsed: {formatElapsedTime(progressData.startTime)}
-              </Text>
-            </Group>
-
-            {progressData.status === "error" && errorDetails && (
-              <Alert
-                variant="light"
-                color="red"
-                title="Error Details"
-                icon={<IconAlertCircle />}
-                mt="md"
-              >
-                <Text size="sm">{errorDetails}</Text>
-              </Alert>
-            )}
-          </Box>
-        )}
-
-        {/* Upload form */}
-        <Stack>
-          <Select
-            disabled={isLoading || isUploading}
-            label="Select Company"
-            placeholder="Choose a company"
-            data={companies.map((company) => ({
-              value: company.id.toString(),
-              label: company.name,
-            }))}
-            value={formData.companyId}
-            onChange={(value) =>
-              setFormData((prev) => ({
-                ...prev,
-                companyId: value || "",
-                quarter: "", // Reset quarter when company changes
-              }))
-            }
-            required
-            searchable
-            clearable
-          />
-
-          <Select
-            disabled={isLoading || isUploading}
-            label="Asset OS"
-            placeholder="Select operating system"
-            data={assetOSOptions}
-            value={formData.assetOS}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, assetOS: value || "" }))
-            }
-            required
-            searchable
-            clearable
-          />
-
-          <Radio.Group
-            value={formData.quarterType}
-            onChange={(value) =>
-              setFormData((prev) => ({
-                ...prev,
-                quarterType: value as "new" | "existing",
-                quarter: "",
-              }))
-            }
-            label="Quarter Type"
-            required
-          >
-            <Group mt="xs">
-              <Radio
-                value="new"
-                label="New Quarter"
-                disabled={isLoading || isUploading}
+      {/* Main content area */}
+      <Flex justify="center" align="start">
+        <Paper
+          shadow="md"
+          p="xl"
+          radius="md"
+          withBorder
+          w={{ base: "100%", sm: "90%", md: "80%", lg: "70%" }}
+        >
+          {/* Progress section */}
+          {progressData && (
+            <Box mb="xl">
+              <Group justify="space-between" mb="xs">
+                <Text fw={500}>Processing Status</Text>
+                <Badge color={getProgressColor(progressData.status)}>
+                  {progressData.status === "pending"
+                    ? "Pending"
+                    : progressData.status === "processing"
+                      ? "Processing"
+                      : progressData.status === "completed"
+                        ? "Completed"
+                        : "Error"}
+                </Badge>
+              </Group>
+              <Progress
+                value={progressData.progress}
+                color={getProgressColor(progressData.status)}
+                size="md"
+                mb="xs"
+                striped={progressData.status === "processing"}
+                animated={progressData.status === "processing"}
               />
-              <Radio
-                value="existing"
-                label="Existing Quarter"
-                disabled={isQuartersDisabled}
-              />
-            </Group>
-          </Radio.Group>
+              <Group justify="space-between">
+                <Text size="sm">{progressData.message}</Text>
+                <Text size="sm" c="dimmed">
+                  Elapsed: {formatElapsedTime(progressData.startTime)}
+                </Text>
+              </Group>
 
-          {formData.quarterType === "new" ? (
-            <TextInput
-              disabled={isLoading || isUploading}
-              label="New Quarter Name"
-              placeholder="Enter quarter name"
-              value={formData.quarter}
-              onChange={(event) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  quarter: event.target.value || "",
-                }))
-              }
-              required
-            />
-          ) : (
+              {progressData.status === "error" && errorDetails && (
+                <Alert
+                  variant="light"
+                  color="red"
+                  title="Error Details"
+                  icon={<IconAlertCircle />}
+                  mt="md"
+                >
+                  <Text size="sm">{errorDetails}</Text>
+                </Alert>
+              )}
+            </Box>
+          )}
+
+          {/* Upload form */}
+          <Stack>
             <Select
               disabled={isLoading || isUploading}
-              label="Select Existing Quarter"
-              placeholder="Choose a quarter"
-              data={quarters.map((q) => ({
-                value: q.quarter,
-                label: q.quarter,
+              label="Select Company"
+              placeholder="Choose a company"
+              data={companies.map((company) => ({
+                value: company.id.toString(),
+                label: company.name,
               }))}
-              value={formData.quarter}
+              value={formData.companyId}
               onChange={(value) =>
-                setFormData((prev) => ({ ...prev, quarter: value || "" }))
+                setFormData((prev) => ({
+                  ...prev,
+                  companyId: value || "",
+                  quarter: "", // Reset quarter when company changes
+                }))
               }
               required
               searchable
               clearable
             />
-          )}
 
-          <DateInput
-            disabled={isLoading || isUploading}
-            label="Date"
-            placeholder="Set File Upload Date"
-            clearable
-            maxDate={new Date()}
-            value={formData.fileUploadDate}
-            onChange={(date) =>
-              setFormData((prev) => ({
-                ...prev,
-                fileUploadDate: date,
-              }))
-            }
-          />
+            <Select
+              disabled={isLoading || isUploading}
+              label="Asset OS"
+              placeholder="Select operating system"
+              data={assetOSOptions}
+              value={formData.assetOS}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, assetOS: value || "" }))
+              }
+              required
+              searchable
+              clearable
+            />
 
-          <FileInput
-            disabled={isLoading || isUploading}
-            label="Select File"
-            placeholder="Select .csv or .xlsx file"
-            accept=".csv,.xlsx"
-            value={formData.file}
-            onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
-            required
-            clearable
-            leftSection={<IconFileUpload size={18} />}
-          />
+            <Radio.Group
+              value={formData.quarterType}
+              onChange={(value) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  quarterType: value as "new" | "existing",
+                  quarter: "",
+                }))
+              }
+              label="Quarter Type"
+              required
+            >
+              <Group mt="xs">
+                <Radio
+                  value="new"
+                  label="New Quarter"
+                  disabled={isLoading || isUploading}
+                />
+                <Radio
+                  value="existing"
+                  label="Existing Quarter"
+                  disabled={isQuartersDisabled}
+                />
+              </Group>
+            </Radio.Group>
 
-          <Text size="xs" c="dimmed">
-            Accepted formats: .csv, .xlsx (max 500MB)
-          </Text>
+            {formData.quarterType === "new" ? (
+              <TextInput
+                disabled={isLoading || isUploading}
+                label="New Quarter Name"
+                placeholder="Enter quarter name"
+                value={formData.quarter}
+                onChange={(event) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    quarter: event.target.value || "",
+                  }))
+                }
+                required
+              />
+            ) : (
+              <Select
+                disabled={isLoading || isUploading}
+                label="Select Existing Quarter"
+                placeholder="Choose a quarter"
+                data={quarters.map((q) => ({
+                  value: q.quarter,
+                  label: q.quarter,
+                }))}
+                value={formData.quarter}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, quarter: value || "" }))
+                }
+                required
+                searchable
+                clearable
+              />
+            )}
 
-          <Button
-            onClick={handleUpload}
-            loading={isLoading}
-            disabled={isLoading || isUploading}
-            color="blue"
-            leftSection={<IconUpload size={16} />}
-          >
-            Upload Report
-          </Button>
-        </Stack>
-      </Paper>
-    </Flex>
+            <DateInput
+              disabled={isLoading || isUploading}
+              label="Date"
+              placeholder="Set File Upload Date"
+              clearable
+              maxDate={new Date()}
+              value={formData.fileUploadDate}
+              onChange={(date) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  fileUploadDate: date,
+                }))
+              }
+            />
+
+            <FileInput
+              disabled={isLoading || isUploading}
+              label="Select File"
+              placeholder="Select .csv or .xlsx file"
+              accept=".csv,.xlsx"
+              value={formData.file}
+              onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
+              required
+              clearable
+              leftSection={<IconFileUpload size={18} />}
+            />
+
+            <Text size="xs" c="dimmed">
+              Accepted formats: .csv, .xlsx (max 500MB)
+            </Text>
+
+            <Button
+              onClick={handleUpload}
+              loading={isLoading}
+              disabled={isLoading || isUploading}
+              color="blue"
+              leftSection={<IconUpload size={16} />}
+            >
+              Upload Report
+            </Button>
+          </Stack>
+        </Paper>
+      </Flex>
+    </>
   );
 }

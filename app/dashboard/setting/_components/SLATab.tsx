@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Container,
   Card,
   Title,
   Text,
@@ -91,7 +90,7 @@ const defaultSLAs: FormValues = {
   endpoint: { critical: 30, high: 60, medium: 90, low: 120 },
 };
 
-export default function SLAManagementPage() {
+export default function SLATab() {
   // State variables
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -223,7 +222,6 @@ export default function SLAManagementPage() {
     };
 
     fetchSLAConfig();
-    // Remove form from the dependency array
   }, [selectedCompanyId]);
 
   // Handle form submission
@@ -336,9 +334,9 @@ export default function SLAManagementPage() {
   };
 
   return (
-    <Container fluid>
+    <>
       <Paper p="md" shadow="xs" mb="md">
-        <Title order={2} mb="md">
+        <Title order={3} mb="md">
           SLA Configuration
         </Title>
         <Text c="dimmed" mb="md">
@@ -510,6 +508,6 @@ export default function SLAManagementPage() {
           </Group>
         </form>
       </Card>
-    </Container>
+    </>
   );
 }

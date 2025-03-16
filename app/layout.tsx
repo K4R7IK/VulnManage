@@ -10,6 +10,7 @@ import {
   MantineProvider,
   mantineHtmlProps,
 } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 
 export const metadata = {
   title: "Vuln Tracker",
@@ -27,7 +28,10 @@ export default function RootLayout({
         <ColorSchemeScript />
       </head>
       <body>
-        <MantineProvider>{children}</MantineProvider>
+        <MantineProvider>
+          <Notifications position="bottom-right" zIndex={1000} />
+          {children}
+        </MantineProvider>
       </body>
     </html>
   );

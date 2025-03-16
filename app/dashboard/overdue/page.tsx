@@ -455,7 +455,7 @@ export default function OverdueVulnerabilitiesPage() {
             disabled={loading}
           />
           <Select
-            label="Items per page"
+            label="Items/page"
             data={itemsPerPageOptions}
             value={itemsPerPage.toString()}
             onChange={(value) => {

@@ -331,7 +331,7 @@ export default function DashboardPage() {
   return (
     <Container fluid>
       <Group justify="space-between" my="sm">
-        <Title size="h1">Security Dashboard</Title>
+        <Title size="h1">Summary Overview</Title>
 
         {user && user.role === "Admin" && (
           <Group>

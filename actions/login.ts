@@ -1,16 +1,12 @@
 "use server";
-import { LoginSchema, UserSchema } from "@/types/userSchema";
+import { LoginSchema, UserWithPasswordSchema } from "@/types/schema";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { LoginActionState } from "@/types/returnTypes";
 import { createSession, encrypt } from "@/lib/session";
 import { redirect } from "next/navigation";
 
-const UserWithPassword = UserSchema.extend({
-  password: z.string(),
-});
-
-type User = z.infer<typeof UserWithPassword> | null;
+type User = z.infer<typeof UserWithPasswordSchema> | null;
 
 export async function loginAction(
   _prevState: any,
