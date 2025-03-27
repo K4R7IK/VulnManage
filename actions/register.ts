@@ -1,12 +1,12 @@
 "use server";
-import { RegisterSchema } from "@/types/userSchema";
+import { RegisterSchema } from "@/types/schema";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { LoginActionState } from "@/types/returnTypes";
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
 
 export async function registerAction(
-  prevState: any,
   formData: FormData,
 ): Promise<LoginActionState> {
   const parseResult = RegisterSchema.safeParse({
@@ -69,7 +69,7 @@ export async function registerAction(
       },
     };
   }
-  const hashedPassword = await Bun.password.hash(password);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   //TODO: Let admin set the usersrole and company on Token Creatation.
   await prisma.$transaction([

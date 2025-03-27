@@ -17,6 +17,7 @@ import {
   Alert,
   Box,
   Badge,
+  Container,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -190,7 +191,7 @@ export default function UploadTab() {
     setIsUploading(true);
 
     // Start a new polling interval using window.setInterval instead of NodeJS.Timeout
-    pollingIntervalRef.current = window.setInterval(fetchProgress, 2000);
+    pollingIntervalRef.current = window.setInterval(fetchProgress, 7000);
 
     // Do an immediate fetch
     fetchProgress();
@@ -450,28 +451,25 @@ export default function UploadTab() {
   const isQuartersDisabled = quarters.length === 0 || isLoading || isUploading;
 
   return (
-    <>
-      <Paper p="md" shadow="xs" mb="md">
-        <Title order={3} mb="sm">
-          Upload Vulnerability Report
-        </Title>
-        <Text size="sm" c="dimmed" mb="md">
-          Upload vulnerability scan data in CSV or Excel format
-        </Text>
-      </Paper>
+    <Container fluid>
+      <Group justify="space-between" mb="lg">
+        <Title order={3}>Upload Vulnerability Report</Title>
+        <Button
+          onClick={handleUpload}
+          loading={isLoading}
+          disabled={isLoading || isUploading}
+          leftSection={<IconUpload size={16} />}
+        >
+          Upload Report
+        </Button>
+      </Group>
 
       {/* Main content area */}
-      <Flex justify="center" align="start">
-        <Paper
-          shadow="md"
-          p="xl"
-          radius="md"
-          withBorder
-          w={{ base: "100%", sm: "90%", md: "80%", lg: "70%" }}
-        >
+      <Paper withBorder shadow="lg" p="md">
+        <Flex justify="center" align="center" miw="100%" direction="column">
           {/* Progress section */}
           {progressData && (
-            <Box mb="xl">
+            <Box mb="xl" miw="75%">
               <Group justify="space-between" mb="xs">
                 <Text fw={500}>Processing Status</Text>
                 <Badge color={getProgressColor(progressData.status)}>
@@ -514,144 +512,139 @@ export default function UploadTab() {
           )}
 
           {/* Upload form */}
-          <Stack>
-            <Select
-              disabled={isLoading || isUploading}
-              label="Select Company"
-              placeholder="Choose a company"
-              data={companies.map((company) => ({
-                value: company.id.toString(),
-                label: company.name,
-              }))}
-              value={formData.companyId}
-              onChange={(value) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  companyId: value || "",
-                  quarter: "", // Reset quarter when company changes
-                }))
-              }
-              required
-              searchable
-              clearable
-            />
-
-            <Select
-              disabled={isLoading || isUploading}
-              label="Asset OS"
-              placeholder="Select operating system"
-              data={assetOSOptions}
-              value={formData.assetOS}
-              onChange={(value) =>
-                setFormData((prev) => ({ ...prev, assetOS: value || "" }))
-              }
-              required
-              searchable
-              clearable
-            />
-
-            <Radio.Group
-              value={formData.quarterType}
-              onChange={(value) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  quarterType: value as "new" | "existing",
-                  quarter: "",
-                }))
-              }
-              label="Quarter Type"
-              required
-            >
-              <Group mt="xs">
-                <Radio
-                  value="new"
-                  label="New Quarter"
-                  disabled={isLoading || isUploading}
-                />
-                <Radio
-                  value="existing"
-                  label="Existing Quarter"
-                  disabled={isQuartersDisabled}
-                />
-              </Group>
-            </Radio.Group>
-
-            {formData.quarterType === "new" ? (
-              <TextInput
-                disabled={isLoading || isUploading}
-                label="New Quarter Name"
-                placeholder="Enter quarter name"
-                value={formData.quarter}
-                onChange={(event) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    quarter: event.target.value || "",
-                  }))
-                }
-                required
-              />
-            ) : (
+          <Stack miw="75%">
+            <Group grow>
               <Select
                 disabled={isLoading || isUploading}
-                label="Select Existing Quarter"
-                placeholder="Choose a quarter"
-                data={quarters.map((q) => ({
-                  value: q.quarter,
-                  label: q.quarter,
+                label="Select Company"
+                placeholder="Choose a company"
+                data={companies.map((company) => ({
+                  value: company.id.toString(),
+                  label: company.name,
                 }))}
-                value={formData.quarter}
+                value={formData.companyId}
                 onChange={(value) =>
-                  setFormData((prev) => ({ ...prev, quarter: value || "" }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    companyId: value || "",
+                    quarter: "", // Reset quarter when company changes
+                  }))
                 }
                 required
                 searchable
                 clearable
               />
-            )}
 
-            <DateInput
-              disabled={isLoading || isUploading}
-              label="Date"
-              placeholder="Set File Upload Date"
-              clearable
-              maxDate={new Date()}
-              value={formData.fileUploadDate}
-              onChange={(date) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  fileUploadDate: date,
-                }))
-              }
-            />
+              <Select
+                disabled={isLoading || isUploading}
+                label="Asset OS"
+                placeholder="Select operating system"
+                data={assetOSOptions}
+                value={formData.assetOS}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, assetOS: value || "" }))
+                }
+                required
+                searchable
+                clearable
+              />
+            </Group>
+            <Group grow>
+              <Radio.Group
+                value={formData.quarterType}
+                onChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    quarterType: value as "new" | "existing",
+                    quarter: "",
+                  }))
+                }
+                label="Quarter Type"
+                required
+              >
+                <Group mt="xs">
+                  <Radio
+                    value="new"
+                    label="New Quarter"
+                    disabled={isLoading || isUploading}
+                  />
+                  <Radio
+                    value="existing"
+                    label="Existing Quarter"
+                    disabled={isQuartersDisabled}
+                  />
+                </Group>
+              </Radio.Group>
 
-            <FileInput
-              disabled={isLoading || isUploading}
-              label="Select File"
-              placeholder="Select .csv or .xlsx file"
-              accept=".csv,.xlsx"
-              value={formData.file}
-              onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
-              required
-              clearable
-              leftSection={<IconFileUpload size={18} />}
-            />
+              {formData.quarterType === "new" ? (
+                <TextInput
+                  disabled={isLoading || isUploading}
+                  label="New Quarter Name"
+                  placeholder="Enter quarter name"
+                  value={formData.quarter}
+                  onChange={(event) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      quarter: event.target.value || "",
+                    }))
+                  }
+                  required
+                />
+              ) : (
+                <Select
+                  disabled={isLoading || isUploading}
+                  label="Select Existing Quarter"
+                  placeholder="Choose a quarter"
+                  data={quarters.map((q) => ({
+                    value: q.quarter,
+                    label: q.quarter,
+                  }))}
+                  value={formData.quarter}
+                  onChange={(value) =>
+                    setFormData((prev) => ({ ...prev, quarter: value || "" }))
+                  }
+                  required
+                  searchable
+                  clearable
+                />
+              )}
+            </Group>
+            <Group grow>
+              <DateInput
+                disabled={isLoading || isUploading}
+                label="Date"
+                placeholder="Set File Upload Date"
+                clearable
+                maxDate={new Date()}
+                defaultDate={new Date()}
+                value={formData.fileUploadDate}
+                onChange={(date) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    fileUploadDate: date,
+                  }))
+                }
+              />
 
-            <Text size="xs" c="dimmed">
-              Accepted formats: .csv, .xlsx (max 500MB)
+              <FileInput
+                disabled={isLoading || isUploading}
+                label="Select File"
+                placeholder="Select .csv or .xlsx file"
+                accept=".csv,.xlsx"
+                value={formData.file}
+                onChange={(file) => setFormData((prev) => ({ ...prev, file }))}
+                required
+                clearable
+                leftSection={<IconFileUpload size={18} />}
+              />
+            </Group>
+
+            <Text size="xs" c="dimmed" ta="right">
+              Accepted formats: .csv (max 500MB)
             </Text>
-
-            <Button
-              onClick={handleUpload}
-              loading={isLoading}
-              disabled={isLoading || isUploading}
-              color="blue"
-              leftSection={<IconUpload size={16} />}
-            >
-              Upload Report
-            </Button>
           </Stack>
-        </Paper>
-      </Flex>
-    </>
+        </Flex>
+      </Paper>
+    </Container>
   );
 }

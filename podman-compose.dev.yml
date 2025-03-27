@@ -1,9 +1,9 @@
 version: "3.8"
-
 services:
-  # PostgreSQL Service
   postgres:
-    image: postgres:16-alpine
+    image: docker.io/library/postgres:latest
+    env_file:
+      - .env
     container_name: vuln-tracker-postgres-dev
     restart: always
     environment:
@@ -20,21 +20,35 @@ services:
       timeout: 5s
       retries: 5
 
-  # Next.js Development Service
   app:
-    image: node:20-alpine
+    image: docker.io/node:20 # Using non-Alpine for better performance
+    env_file:
+      - .env
     container_name: vuln-tracker-app-dev
     working_dir: /app
-    command: sh -c "npm install && npx prisma generate && npx prisma migrate dev && npm run dev"
+    command: sh -c "npm install && npx tsc utils/csvProcessWorker.ts --outDir utils --esModuleInterop --module esnext --target es2020 --strict --moduleResolution node && mv utils/csvProcessWorker.js utils/csvProcessWorker.mjs && npx prisma generate && npx prisma migrate dev && npx prisma db seed && NEXT_TELEMETRY_DISABLED=1 npm run dev"
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+      - next-cache:/app/.next/cache # Persisting Next.js cache
     ports:
       - "3000:3000"
+      - "5555:5555"
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vulntracker}?schema=public
       - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_key_here}
+      - NEXT_TELEMETRY_DISABLED=1
+      - WATCHPACK_POLLING=true # Improves file change detection in containers
+    deploy:
+      resources:
+        limits:
+          memory: 4G # Increase memory limit if possible
+          cpus: '2' # Limit CPU usage to prevent system overload
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,3 +56,4 @@ services:
 volumes:
   postgres_data_dev:
   node_modules:
+  next-cache:

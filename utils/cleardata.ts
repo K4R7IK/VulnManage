@@ -20,7 +20,10 @@ export async function clearDatabase() {
 
     // console.log("Deleting User records...");
     // await prisma.user.deleteMany();
-
+    //
+    // console.log("Deleting SLA records...");
+    // await prisma.riskSLA.deleteMany();
+    //
     // console.log("Deleting Company records...");
     // await prisma.company.deleteMany();
 

@@ -11,7 +11,6 @@ function handleUnauthorized(req: NextRequest) {
 export default async function middleware(req: NextRequest) {
   // Checking if route is protected
   const isProtectedRoute = req.nextUrl.pathname.startsWith("/dashboard");
-
   if (!isProtectedRoute) {
     return NextResponse.next();
   }

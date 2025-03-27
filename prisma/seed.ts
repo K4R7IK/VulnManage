@@ -1,5 +1,5 @@
 import { PrismaClient, UserRole } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -16,8 +16,8 @@ async function main() {
   // Create users,
   const user1 = await prisma.user.create({
     data: {
-      name: "Kartik",
-      email: "kkushwaha@etek.com",
+      name: "Root",
+      email: "root@etek.com",
       password: passwordKartik,
       role: UserRole.Admin,
     },

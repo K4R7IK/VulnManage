@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: docker.io/postgres:latest
+    container_name: VulnTrackerDBonly
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: asdfasdf
+      POSTGRES_DB: etek
+    ports:
+      - "5432:5432"
+    # volumes:
+    #   - postgres_data:/var/lib/postgresql/data 
+    restart: always 
+
+volumes:
+  postgres_data:

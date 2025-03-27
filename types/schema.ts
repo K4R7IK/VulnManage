@@ -58,3 +58,12 @@ export const CompanySchema = z.object({
 export const CreateCompanySchema = CompanySchema.pick({
   name: true,
 });
+
+export const UpdateCompanySchema = CompanySchema.pick({
+  id: true,
+  name: true,
+});
+
+export const DeleteCompanySchema = CompanySchema.pick({
+  id: true,
+});

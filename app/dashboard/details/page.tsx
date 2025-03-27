@@ -735,7 +735,7 @@ export default function DetailsPage() {
                         }
                       }}
                     >
-                      <Table.Td>{vuln.title}</Table.Td>
+                      <Table.Td maw="300px">{vuln.title}</Table.Td>
                       <Table.Td>{vuln.assetIp}</Table.Td>
                       <Table.Td>
                         <Badge color={getRiskBadgeColor(vuln.riskLevel)}>

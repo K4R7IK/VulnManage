@@ -9,7 +9,7 @@ import {
 } from "@/types/schema";
 import { verifySession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import bcrypt from "bcryptjs";
 
 type User = z.infer<typeof UserSchema>;
 type UserWithPassword = z.infer<typeof UserWithPasswordSchema>;
@@ -56,7 +56,7 @@ export async function createUser(_prevState: any, formData: FormData) {
   }
   const { name, email, role, companyId, password } = parseResult.data;
   try {
-    const hashedPassword = await Bun.password.hash(password);
+    const hashedPassword = await bcrypt.hash(password, 10);
     await prisma.user.create({
       data: {
         name,
@@ -73,7 +73,6 @@ export async function createUser(_prevState: any, formData: FormData) {
       },
     };
   }
-  revalidatePath("/dashboard/settings", "page");
 }
 
 export async function updateUser(_prevState: any, formData: FormData) {
@@ -117,7 +116,7 @@ export async function updateUser(_prevState: any, formData: FormData) {
     if (!validatedResult.password) {
       hashedPassword = user.password;
     } else {
-      hashedPassword = await Bun.password.hash(validatedResult.password);
+      hashedPassword = await bcrypt.hash(validatedResult.password, 10);
     }
     await prisma.user.update({
       where: {
@@ -155,5 +154,4 @@ export async function deleteUser(id: number) {
       },
     };
   }
-  revalidatePath("/dashboard/setting");
 }

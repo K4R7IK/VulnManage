@@ -13,6 +13,7 @@ import {
   Loader,
   Select,
   PasswordInput,
+  Divider,
 } from "@mantine/core";
 import { IconPlus, IconEdit, IconTrash } from "@tabler/icons-react";
 import { z } from "zod";
@@ -37,11 +38,11 @@ export default function UserManagementTab({ user }: { user: User }) {
     useNotification();
   const [createUserState, createUserAction, createPending] = useActionState(
     createUser,
-    undefined,
+    undefined
   );
   const [updateUserState, updateUserAction, updatePending] = useActionState(
     updateUser,
-    undefined,
+    undefined
   );
   const [editUser, setEditUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -66,14 +67,18 @@ export default function UserManagementTab({ user }: { user: User }) {
 
   const fetchCompaniesData = async () => {
     try {
-      const { error, success, data } = await fetchCompanies();
-      if (!success || !data) {
-        let message = error?.message ?? "";
+      const response = await fetchCompanies();
+      console.log("Companies response:", response); // Add logging
+
+      if (!response || !response.success) {
+        let message = response?.error?.message ?? "Unknown error";
         errorNotification(message, "Error fetching Companies");
+      } else {
+        setCompanies(response.data ?? []);
       }
-      setCompanies(data ?? []);
-    } catch (_error) {
-      errorNotification("Error fetching user details", "Server Down");
+    } catch (error) {
+      console.error("Company fetch error:", error); // Log the actual error
+      errorNotification("Error fetching company details", "Server Down");
     }
   };
 
@@ -110,7 +115,7 @@ export default function UserManagementTab({ user }: { user: User }) {
       if (Number(formData.get("id")) === user.id) {
         infoNotification(
           "As your user details have changed, we are logging you out.",
-          "Login Again!",
+          "Login Again!"
         );
         await deleteSession();
       }
@@ -121,7 +126,7 @@ export default function UserManagementTab({ user }: { user: User }) {
     if (!id) {
       errorNotification(
         "We can't seem to find the user for now.",
-        "User not found",
+        "User not found"
       );
       return;
     }
@@ -179,7 +184,6 @@ export default function UserManagementTab({ user }: { user: User }) {
       </Group>
 
       <Modal
-        title="Add User"
         opened={addButtonState}
         onClose={() => {
           addButtonHandler.close();
@@ -189,7 +193,11 @@ export default function UserManagementTab({ user }: { user: User }) {
           backgroundOpacity: 0.55,
           blur: 3,
         }}
+        withCloseButton={false}
       >
+        <Title order={3} mb="md">
+          Add User
+        </Title>
         <form action={createUserData}>
           <TextInput
             name="name"
@@ -239,14 +247,14 @@ export default function UserManagementTab({ user }: { user: User }) {
             type="submit"
             loading={createPending}
             disabled={createPending}
+            fullWidth
           >
-            Add User
+            Create User
           </Button>
         </form>
       </Modal>
       {/* Edit User Information */}
       <Modal
-        title="Edit User"
         opened={editButtonState}
         onClose={() => {
           editButtonHandler.close();
@@ -256,7 +264,11 @@ export default function UserManagementTab({ user }: { user: User }) {
           backgroundOpacity: 0.55,
           blur: 3,
         }}
+        withCloseButton={false}
       >
+        <Title order={3} mb="md">
+          Edit User Details
+        </Title>
         <form action={updateUserData}>
           <input type="hidden" name="id" defaultValue={editUser?.id} />
           <TextInput
@@ -306,8 +318,9 @@ export default function UserManagementTab({ user }: { user: User }) {
             type="submit"
             loading={updatePending}
             disabled={updatePending}
+            fullWidth
           >
-            Edit User Data
+            Save User Data
           </Button>
         </form>
       </Modal>
@@ -418,7 +431,7 @@ export default function UserManagementTab({ user }: { user: User }) {
                 <Table.Td>{user.role}</Table.Td>
                 <Table.Td>
                   {companies.find((c) => c.id === user.companyId)?.name ||
-                    "N/A"}
+                    "Not Associated"}
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">

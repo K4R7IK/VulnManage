@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { PrismaClient, RiskLevel, Vulnerability } from "@prisma/client";
 import Papa from "papaparse";
 import { calculateVulnerabilitySummary } from "./calculateSummary";
@@ -17,7 +18,6 @@ type CsvRow = {
   Solution: string;
   "See Also": string;
   "Plugin Output": string;
-  [key: string]: any; // Allow for additional fields that might be present
 };
 
 type ImportParams = {
@@ -42,106 +42,83 @@ function mapRiskLevel(risk: string): RiskLevel {
   return riskMap[risk] || RiskLevel.None;
 }
 
-// Unified key generation function for both CSV row deduplication and database uniqueness
-function generateUniqueKey(
-  input: CsvRow | Omit<Vulnerability, "id" | "createdAt" | "updatedAt">,
-  params?: ImportParams,
-): string {
-  // Determine if we're working with a CsvRow or a Vulnerability
-  const isCsvRow = "Host" in input;
-
-  // Extract and normalize values based on input type
-  const assetIp = isCsvRow
-    ? (input.Host || "").toLowerCase().trim()
-    : ((input as any).assetIp || "").toLowerCase().trim();
-
-  const assetOS =
-    isCsvRow && params
-      ? (params.assetOS || "").toLowerCase().trim()
-      : ((input as any).assetOS || "").toLowerCase().trim();
-
-  const port = isCsvRow
-    ? input.Port || ""
-    : (input as any).port !== null
-      ? (input as any).port.toString()
-      : "";
-
-  const protocol = isCsvRow
-    ? (input.Protocol || "").toLowerCase().trim()
-    : ((input as any).protocol || "").toLowerCase().trim();
-
-  const title = isCsvRow
-    ? (input.Name || "").toLowerCase().trim()
-    : ((input as any).title || "").toLowerCase().trim();
-
-  const risk = isCsvRow
-    ? (input.Risk || "").toLowerCase().trim()
-    : ((input as any).riskLevel || "").toString().toLowerCase().trim();
-
-  const impact = isCsvRow
-    ? (input.Synopsis || "").toLowerCase().trim().substring(0, 50)
-    : ((input as any).impact || "").toLowerCase().trim().substring(0, 50);
-
-  const companyId =
-    isCsvRow && params
-      ? params.companyId.toString()
-      : ((input as any).companyId || "").toString();
-
-  // Create the composite key with all essential fields
-  return `${assetIp}|${assetOS}|${port}|${protocol}|${title}|${risk}|${impact}|${companyId}`;
+// Generate unique hash for vulnerability
+function generateVulnHash(vuln: {
+  assetOS: string;
+  assetIp: string;
+  port: number | null;
+  protocol: string | null;
+  title: string;
+  cveId: string[];
+  description: string;
+  riskLevel: RiskLevel;
+  cvssScore: number | null;
+  impact: string;
+  recommendations: string;
+  references: string[];
+  companyId: number;
+  pluginOutput: string | null;
+}): string {
+  const normalizedData = {
+    assetOS: vuln.assetOS,
+    assetIp: vuln.assetIp,
+    port: vuln.port,
+    protocol: vuln.protocol,
+    title: vuln.title,
+    cveId: [...vuln.cveId].sort(),
+    description: vuln.description,
+    riskLevel: vuln.riskLevel,
+    cvssScore: vuln.cvssScore,
+    impact: vuln.impact,
+    recommendations: vuln.recommendations,
+    companyId: vuln.companyId,
+    references: [...vuln.references].sort(),
+  };
+  
+  const data = JSON.stringify(normalizedData);
+  return createHash("sha256").update(data).digest("hex");
 }
 
-// Convert CSV row to vulnerability object - optimized for better null handling
+// Convert CSV row to vulnerability object
 function mapCsvRowToVulnerability(
   row: CsvRow,
   params: ImportParams,
 ): Omit<Vulnerability, "id" | "createdAt" | "updatedAt"> {
-  // Pre-process values once to avoid repeated operations
-  const port = row.Port ? parseInt(row.Port) : null;
-  const protocol = row.Protocol || null;
-  const cvssScore = row["CVSS v2.0 Base Score"]
-    ? parseFloat(row["CVSS v2.0 Base Score"])
-    : null;
-  const cveId = row.CVE ? [row.CVE] : ["None"];
-  const references = row["See Also"] ? [row["See Also"]] : [];
-
-  // Create the vulnerability object
-  const vulnData: Omit<Vulnerability, "id" | "createdAt" | "updatedAt"> = {
+  return {
     assetIp: row.Host,
     assetOS: params.assetOS,
-    port,
-    protocol,
+    port: row.Port ? parseInt(row.Port) : null,
+    protocol: row.Protocol ? row.Protocol : null,
     title: row.Name,
-    cveId,
+    cveId: row.CVE ? [row.CVE] : ["None"],
     description: row.Description,
     riskLevel: mapRiskLevel(row.Risk),
-    cvssScore,
+    cvssScore: row["CVSS v2.0 Base Score"]
+      ? parseFloat(row["CVSS v2.0 Base Score"])
+      : null,
     impact: row.Synopsis,
     recommendations: row.Solution,
-    references,
+    references: row["See Also"] ? [row["See Also"]] : [],
     pluginOutput: row["Plugin Output"] || null,
     companyId: params.companyId,
     fileUploadDate: params.fileUploadDate,
-    uniqueHash: "", // Will be set below
+    uniqueHash: "", // Will be set after object creation
   };
-
-  // Generate uniqueHash using our unified key generation function
-  vulnData.uniqueHash = generateUniqueKey(vulnData);
-
-  return vulnData;
 }
 
-// Split array into chunks of specified size - more efficient one-liner
+// Split array into chunks of specified size
 function chunkArray<T>(array: T[], chunkSize: number): T[][] {
-  return Array.from({ length: Math.ceil(array.length / chunkSize) }, (_, i) =>
-    array.slice(i * chunkSize, (i + 1) * chunkSize),
-  );
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
 }
 
-// Optimized batch size for database queries
+// Batch size for database queries to avoid "too many bind variables" error
 const DB_QUERY_BATCH_SIZE = 5000;
 
-// Process vulnerabilities in batches - optimized for performance
+// Process a batch of vulnerabilities
 async function processBatch(
   tx: Omit<
     PrismaClient,
@@ -149,47 +126,38 @@ async function processBatch(
   >,
   vulnBatch: {
     vulnData: Omit<Vulnerability, "id" | "createdAt" | "updatedAt">;
+    hash: string;
   }[],
   quarter: string,
   fileUploadDate: Date,
   previousQuarter: { fileUploadDate: Date; quarter: string } | null,
 ): Promise<void> {
-  if (vulnBatch.length === 0) return;
+  // Extract hashes from batch
+  const batchHashes = vulnBatch.map((item) => item.hash);
 
-  // Extract uniqueHashes from batch
-  const batchHashes = vulnBatch.map((item) => item.vulnData.uniqueHash);
-  const companyId = vulnBatch[0].vulnData.companyId;
-  const assetOS = vulnBatch[0].vulnData.assetOS;
-
-  // Build an optimized query to fetch existing vulnerabilities
-  // Use "in" queries with batched hashes to avoid too many parameters
+  // Split hashes into smaller chunks to avoid "too many bind variables" error
   const hashChunks = chunkArray(batchHashes, DB_QUERY_BATCH_SIZE);
+
+  // Collect existing vulnerabilities from all chunks
   let allExistingVulns: any[] = [];
 
-  // Process each chunk of hashes
   for (const hashChunk of hashChunks) {
-    // Get existing vulnerabilities by uniqueHash for this chunk with optimized query
-    // Only select the fields we actually need
+    // Get existing vulnerabilities by hashes for this chunk
     const chunkExistingVulns = await tx.vulnerability.findMany({
       where: {
-        companyId,
-        assetOS,
-        uniqueHash: { in: hashChunk },
+        AND: [
+          { companyId: vulnBatch[0].vulnData.companyId }, // All items in batch have same companyId
+          { assetOS: vulnBatch[0].vulnData.assetOS }, // All items in batch have same assetOS
+          { uniqueHash: { in: hashChunk } },
+        ],
       },
-      select: {
-        id: true,
-        uniqueHash: true,
+      include: {
         quarterData: {
           where: previousQuarter
             ? {
                 OR: [{ quarter: previousQuarter.quarter }, { quarter }],
               }
             : undefined,
-          select: {
-            id: true,
-            quarter: true,
-            isResolved: true,
-          },
           orderBy: { fileUploadDate: "desc" },
         },
       },
@@ -198,31 +166,16 @@ async function processBatch(
     allExistingVulns = [...allExistingVulns, ...chunkExistingVulns];
   }
 
-  // Map existing vulnerabilities by uniqueHash for O(1) lookups instead of O(n) array searches
+  // Map existing vulnerabilities by hash
   const existingVulnMap = new Map(
     allExistingVulns.map((vuln) => [vuln.uniqueHash, vuln]),
   );
 
-  // Prepare operations by type for more efficient batch processing
-  const newVulnerabilities: Omit<
-    Vulnerability,
-    "id" | "createdAt" | "updatedAt"
-  >[] = [];
-  const quarterUpdates: { id: string; isResolved: boolean }[] = [];
-  const quarterCreates: {
-    vulnerabilityId: string;
-    quarter: string;
-    isResolved: boolean;
-    fileUploadDate: Date;
-  }[] = [];
-
-  // Process vulnerabilities from batch - grouping by operation type
-  for (const { vulnData } of vulnBatch) {
-    const uniqueHash = vulnData.uniqueHash;
-
-    if (existingVulnMap.has(uniqueHash)) {
+  // Process vulnerabilities from batch
+  for (const { vulnData, hash } of vulnBatch) {
+    if (existingVulnMap.has(hash)) {
       // Case 1: Vulnerability exists in database
-      const existingVuln = existingVulnMap.get(uniqueHash)!;
+      const existingVuln = existingVulnMap.get(hash)!;
 
       // Check if we already have an entry for this quarter
       const existingQuarter = existingVuln.quarterData.find(
@@ -230,74 +183,43 @@ async function processBatch(
       );
 
       if (existingQuarter) {
-        // Add to update array if it was marked as resolved
+        // Update existing quarter if it was marked as resolved
         if (existingQuarter.isResolved) {
-          quarterUpdates.push({
-            id: existingQuarter.id,
-            isResolved: false,
+          await tx.vulnerabilityQuarter.update({
+            where: { id: existingQuarter.id },
+            data: { isResolved: false },
           });
         }
       } else {
-        // Add to create array
-        quarterCreates.push({
-          vulnerabilityId: existingVuln.id,
-          quarter,
-          isResolved: false,
-          fileUploadDate,
+        // Create new quarter entry
+        await tx.vulnerabilityQuarter.create({
+          data: {
+            vulnerabilityId: existingVuln.id,
+            quarter,
+            isResolved: false,
+            fileUploadDate: fileUploadDate,
+          },
         });
       }
     } else {
       // Case 2: New vulnerability
-      newVulnerabilities.push(vulnData);
-    }
-  }
-
-  // Process operations in batches for better performance
-  // 1. Create new vulnerabilities - still need individual creates due to relationship
-  for (const vulnData of newVulnerabilities) {
-    await tx.vulnerability.create({
-      data: {
-        ...vulnData,
-        quarterData: {
-          create: {
-            quarter,
-            isResolved: false,
-            fileUploadDate,
+      await tx.vulnerability.create({
+        data: {
+          ...vulnData,
+          quarterData: {
+            create: {
+              quarter,
+              isResolved: false,
+              fileUploadDate: fileUploadDate,
+            },
           },
         },
-      },
-    });
-  }
-
-  // 2. Update existing quarters in bulk where possible
-  const updateChunks = chunkArray(quarterUpdates, DB_QUERY_BATCH_SIZE);
-  for (const chunk of updateChunks) {
-    // Process each update in parallel
-    await Promise.all(
-      chunk.map((update) =>
-        tx.vulnerabilityQuarter.update({
-          where: { id: update.id },
-          data: { isResolved: update.isResolved },
-        }),
-      ),
-    );
-  }
-
-  // 3. Create new quarters in bulk where possible
-  const createChunks = chunkArray(quarterCreates, DB_QUERY_BATCH_SIZE);
-  for (const chunk of createChunks) {
-    // Process each create in parallel
-    await Promise.all(
-      chunk.map((create) =>
-        tx.vulnerabilityQuarter.create({
-          data: create,
-        }),
-      ),
-    );
+      });
+    }
   }
 }
 
-// Main import function with batch processing - Optimized version
+// Main import function with batch processing
 export async function importVulnerabilities(
   prisma: PrismaClient,
   params: ImportParams,
@@ -306,7 +228,7 @@ export async function importVulnerabilities(
     fileUploadDate,
     quarter,
     csvContent,
-    batchSize = 5000, // Increased default batch size to 5000
+    batchSize = 1000, // Increased default batch size to 1000
     operationId,
   } = params;
 
@@ -321,51 +243,24 @@ export async function importVulnerabilities(
   }
 
   try {
-    // OPTIMIZATION: Improved CSV parsing with more robust settings
+    // Parse CSV content
     const parseResult = Papa.parse<CsvRow>(csvContent, {
       header: true,
-      skipEmptyLines: "greedy", // Skip all kinds of empty lines
-      dynamicTyping: true, // Auto-convert numbers and booleans
-      fastMode: false, // Disable fast mode for better error handling
-      delimiter: ",", // Explicitly define the delimiter
-      transformHeader: (header: string) => header.trim(), // Trim headers
-      transform: (value: any) =>
-        typeof value === "string" ? value.trim() : value, // Trim values
-      comments: false, // No comment handling
+      skipEmptyLines: true,
     });
 
-    // Log any parsing errors but continue if possible
     if (parseResult.errors.length > 0) {
-      console.warn(`CSV parsing had ${parseResult.errors.length} errors`);
-      parseResult.errors.slice(0, 5).forEach((err, i) => {
-        console.warn(
-          `Error ${i + 1}: ${err.message} at row ${err.row || "unknown"}`,
-        );
-      });
-
-      if (parseResult.data.length === 0) {
-        if (operationId) {
-          ProgressTracker.update(operationId, {
-            status: "error",
-            message: `CSV parsing failed: No data could be parsed`,
-          });
-        }
-        throw new Error(`CSV parsing failed: No data could be parsed`);
-      } else {
-        if (operationId) {
-          ProgressTracker.update(operationId, {
-            progress: 10,
-            message: `Processing ${parseResult.data.length} rows from CSV (with some parsing warnings)...`,
-          });
-        }
-        console.warn(
-          `Continuing with ${parseResult.data.length} successfully parsed rows`,
-        );
+      if (operationId) {
+        ProgressTracker.update(operationId, {
+          status: "error",
+          message: `CSV parsing failed: ${parseResult.errors[0].message}`,
+        });
       }
+      throw new Error(`CSV parsing failed: ${parseResult.errors[0].message}`);
     }
 
     // Logging Totals rows before filtering
-    console.log(`Total rows in CSV: ${parseResult.data.length}`);
+    console.log(`Total rows in Csv: ${parseResult.data.length}`);
     if (operationId) {
       ProgressTracker.update(operationId, {
         progress: 10,
@@ -373,411 +268,268 @@ export async function importVulnerabilities(
       });
     }
 
-    // OPTIMIZATION: More efficient filtering and deduplication
     // Filter out rows with "None" risk level
     const validRows = parseResult.data.filter((row) => row.Risk !== "None");
-    console.log(`Rows after removing None risk: ${validRows.length}`);
+    console.log(`Rows after remove None risk: ${validRows.length}`);
 
-    // OPTIMIZATION: Use simple key generation for deduplication
-    const uniqueRowsMap = new Map<string, CsvRow>();
-    for (const row of validRows) {
-      // Use our unified key generation function for deduplication
-      const key = generateUniqueKey(row, params);
-      uniqueRowsMap.set(key, row);
-    }
+    // Generate hashes for all rows first
+    const vulnDataAndHashes = validRows.map((row) => {
+      const vulnData = {
+        ...mapCsvRowToVulnerability(row, params),
+        assetOS: params.assetOS,
+      };
+      const hash = generateVulnHash(vulnData);
+      vulnData.uniqueHash = hash;
+      return { vulnData, hash };
+    });
 
-    const uniqueRows = Array.from(uniqueRowsMap.values());
-    console.log(`Unique rows: ${uniqueRows.length}`);
+    // Deduplicate based on hash
+    const uniqueVulnDataAndHashes = Array.from(
+      new Map(vulnDataAndHashes.map(item => [item.hash, item])).values()
+    );
+    console.log(`Unique vulnerabilities after hash deduplication: ${uniqueVulnDataAndHashes.length}`);
 
     if (operationId) {
       ProgressTracker.update(operationId, {
         progress: 15,
-        message: `Found ${uniqueRows.length} unique vulnerabilities to process`,
+        message: `Found ${uniqueVulnDataAndHashes.length} unique vulnerabilities to process`,
       });
     }
 
-    // Log duplicate stats if found
-    if (uniqueRows.length < validRows.length) {
-      console.log(
-        `Found ${validRows.length - uniqueRows.length} duplicate rows`,
-      );
-      // Only log a sample of duplicates for debugging
-      if (validRows.length - uniqueRows.length > 0) {
-        const duplicateKeys = new Map<string, number>();
+    // Get all unique hashes from the import data
+    const allUniqueHashes = uniqueVulnDataAndHashes.map(v => v.hash);
+    console.log(`Total unique vulnerabilities: ${allUniqueHashes.length}`);
 
-        // Count occurrences of each key
-        for (const row of validRows) {
-          const key = generateUniqueKey(row, params);
-          duplicateKeys.set(key, (duplicateKeys.get(key) || 0) + 1);
-        }
+    // Split the vulnerabilities into batches
+    const batches = chunkArray(uniqueVulnDataAndHashes, batchSize);
+    console.log(
+      `Processing in ${batches.length} batches of max ${batchSize} items`,
+    );
 
-        // Log a few examples of duplicates
-        let count = 0;
-        for (const [key, occurrences] of duplicateKeys.entries()) {
-          if (occurrences > 1) {
-            console.log(
-              `Key with ${occurrences} duplicates: ${key.substring(0, 100)}...`,
-            );
-            if (++count >= 5) break; // Only log first 5 duplicate keys
-          }
-        }
-      }
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        progress: 30,
+        message: `Processing vulnerabilities in ${batches.length} batches...`,
+      });
     }
 
-    try {
-      // Find the most recent quarter before the provided date
+    // Progress calculations
+    // Reserve 30% for initial processing, 40% for batch processing, 20% for resolving old vulns, 10% for summary
+    const batchProgressShare = 40; // 40% of total progress for processing batches
+    const batchProgressPerUnit =
+      batches.length > 0 ? batchProgressShare / batches.length : 0;
+
+    // Process each batch
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(
+        `Processing batch ${i + 1}/${batches.length} with ${
+          batch.length
+        } items`,
+      );
+
       if (operationId) {
         ProgressTracker.update(operationId, {
-          progress: 20,
-          message: "Finding previous quarter data...",
+          progress: 30 + Math.floor(i * batchProgressPerUnit),
+          message: `Processing batch ${i + 1} of ${batches.length}...`,
         });
       }
 
-      // OPTIMIZATION: More specific query with only needed fields
-      const previousQuarter = await prisma.vulnerabilityQuarter.findFirst({
+      await prisma.$transaction(async (tx) => {
+        await processBatch(
+          tx,
+          batch,
+          quarter,
+          fileUploadDate,
+          null,
+        );
+      });
+
+      console.log(`Completed batch ${i + 1}/${batches.length}`);
+    }
+
+    // After all batches are processed, handle vulnerabilities not in current CSV (Case 3)
+    console.log("Processing vulnerabilities not in current CSV...");
+
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        progress: 70,
+        message: "Resolving old vulnerabilities...",
+      });
+    }
+
+    // Process just the current OS type
+    console.log(`Processing OS: ${params.assetOS}`);
+
+    // Find active vulnerabilities for this company and OS in smaller batches
+    // Use a cursor-based approach to avoid loading too many records at once
+    let lastId: string | null = null;
+    let hasMore = true;
+    const PAGE_SIZE = 1000; // Process 1000 records at a time
+    const unresolvedVulns: Vulnerability[] = [];
+    let totalUnresolvedVulns = 0;
+
+    while (hasMore) {
+      const activeVulnsBatch: (Vulnerability & {
+        quarterData: {
+          id: string;
+          quarter: string;
+          isResolved: boolean;
+          fileUploadDate: Date;
+        }[];
+      })[] = await prisma.vulnerability.findMany({
         where: {
-          vulnerability: {
-            companyId: params.companyId,
-            assetOS: params.assetOS,
-          },
-          fileUploadDate: { lt: fileUploadDate },
-        },
-        orderBy: {
-          fileUploadDate: "desc",
-        },
-        select: {
-          fileUploadDate: true,
-          quarter: true,
-        },
-      });
-
-      // Process CSV rows and generate vulnerability data
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 25,
-          message: "Generating vulnerability data...",
-        });
-      }
-
-      // OPTIMIZATION: More efficient vulnerability data generation
-      const vulnDataBatch = uniqueRows.map((row) => {
-        // mapCsvRowToVulnerability now generates uniqueHash internally
-        const vulnData = mapCsvRowToVulnerability(row, params);
-        return { vulnData };
-      });
-
-      // Get all unique hashes from the import data using a Set for better performance
-      const allUniqueHashes = new Set(
-        vulnDataBatch.map((v) => v.vulnData.uniqueHash),
-      );
-      console.log(`Total unique vulnerabilities: ${allUniqueHashes.size}`);
-
-      // Split the vulnerabilities into batches
-      const batches = chunkArray(vulnDataBatch, batchSize);
-      console.log(
-        `Processing in ${batches.length} batches of max ${batchSize} items`,
-      );
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 30,
-          message: `Processing vulnerabilities in ${batches.length} batches...`,
-        });
-      }
-
-      // Progress calculations
-      const batchProgressShare = 40; // 40% of total progress for processing batches
-      const batchProgressPerUnit =
-        batches.length > 0 ? batchProgressShare / batches.length : 0;
-
-      // Process each batch with improved transaction settings
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        console.log(
-          `Processing batch ${i + 1}/${batches.length} with ${batch.length} items`,
-        );
-
-        if (operationId) {
-          ProgressTracker.update(operationId, {
-            progress: 30 + Math.floor(i * batchProgressPerUnit),
-            message: `Processing batch ${i + 1} of ${batches.length}...`,
-          });
-        }
-
-        // Each batch gets its own transaction with improved settings
-        await prisma.$transaction(
-          async (tx) => {
-            await processBatch(
-              tx,
-              batch,
-              quarter,
-              fileUploadDate,
-              previousQuarter,
-            );
-          },
-          {
-            // Increased transaction timeouts for larger batches
-            timeout: 180000, // 3 minutes
-            maxWait: 45000, // 45 seconds
-          },
-        );
-
-        console.log(`Completed batch ${i + 1}/${batches.length}`);
-      }
-
-      // After all batches are processed, handle vulnerabilities not in current CSV
-      console.log("Processing vulnerabilities not in current CSV...");
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 70,
-          message: "Resolving old vulnerabilities...",
-        });
-      }
-
-      // Process just the current OS type
-      console.log(`Processing OS: ${params.assetOS}`);
-
-      // OPTIMIZATION: More efficient resolution of old vulnerabilities
-      // First, check if we need to handle this at all
-      const hasUnresolvedVulnerabilities =
-        await prisma.vulnerabilityQuarter.findFirst({
-          where: {
-            vulnerability: {
-              companyId: params.companyId,
-              assetOS: params.assetOS,
-            },
-            isResolved: false,
-            ...(previousQuarter ? { quarter: previousQuarter.quarter } : {}),
-          },
-          select: { id: true },
-        });
-
-      if (!hasUnresolvedVulnerabilities) {
-        console.log(
-          "No unresolved vulnerabilities from previous quarter. Skipping resolution phase.",
-        );
-      } else {
-        // Find active vulnerabilities for this company and OS in smaller batches
-        // Use a cursor-based approach to avoid loading too many records at once
-        let lastId: string | null = null;
-        let hasMore = true;
-        const PAGE_SIZE = 2500; // Increase page size for better performance
-        const vulnIdsToResolve: string[] = [];
-        let totalUnresolvedVulns = 0;
-
-        while (hasMore) {
-          // OPTIMIZATION: More targeted query to reduce data transfer
-          const activeVulnsBatch = await prisma.vulnerability.findMany({
-            where: {
-              companyId: params.companyId,
-              assetOS: params.assetOS,
-              ...(lastId ? { id: { gt: lastId } } : {}), // Cursor pagination
+          AND: [
+            { companyId: params.companyId },
+            { assetOS: params.assetOS },
+            lastId ? { id: { gt: lastId } } : {}, // Cursor pagination
+            {
               quarterData: {
                 some: {
-                  ...(previousQuarter
-                    ? { quarter: previousQuarter.quarter }
-                    : {}),
-                  isResolved: false,
+                  AND: [
+                    {
+                      isResolved: false,
+                    },
+                  ],
                 },
               },
             },
-            select: {
-              id: true,
-              uniqueHash: true,
-              quarterData: {
-                where: { quarter },
-                select: { id: true, isResolved: true },
-              },
-            },
-            orderBy: { id: "asc" },
-            take: PAGE_SIZE,
-          });
-
-          // Update pagination info
-          hasMore = activeVulnsBatch.length === PAGE_SIZE;
-          if (activeVulnsBatch.length > 0) {
-            lastId = activeVulnsBatch[activeVulnsBatch.length - 1].id;
-          }
-
-          console.log(
-            `Found ${activeVulnsBatch.length} active vulnerabilities in batch`,
-          );
-
-          // Filter this batch using the hashSet for efficient lookups
-          for (const vuln of activeVulnsBatch) {
-            if (!allUniqueHashes.has(vuln.uniqueHash)) {
-              // Only include vulnerabilities that aren't in the current import
-              vulnIdsToResolve.push(vuln.id);
-            }
-          }
-
-          totalUnresolvedVulns = vulnIdsToResolve.length;
-          console.log(
-            `Found ${vulnIdsToResolve.length} vulnerabilities to resolve so far`,
-          );
-        }
-
-        console.log(
-          `Found total of ${totalUnresolvedVulns} vulnerabilities to mark as resolved`,
-        );
-
-        // Process in batches to avoid large transactions
-        const unresolvedBatches = chunkArray(vulnIdsToResolve, batchSize);
-
-        // Progress calculations for unresolved batches
-        const unresolvedProgressShare = 20; // 20% of total progress for resolving old vulns
-        const unresolvedProgressPerUnit =
-          unresolvedBatches.length > 0
-            ? unresolvedProgressShare / unresolvedBatches.length
-            : unresolvedProgressShare;
-
-        for (let i = 0; i < unresolvedBatches.length; i++) {
-          const batch = unresolvedBatches[i];
-          console.log(
-            `Processing unresolved batch ${i + 1}/${unresolvedBatches.length} with ${batch.length} items`,
-          );
-
-          if (operationId) {
-            ProgressTracker.update(operationId, {
-              progress: 70 + Math.floor(i * unresolvedProgressPerUnit),
-              message: `Resolving old vulnerabilities: batch ${i + 1} of ${unresolvedBatches.length}...`,
-            });
-          }
-
-          // OPTIMIZATION: More efficient transaction handling for resolving old vulnerabilities
-          await prisma.$transaction(
-            async (tx) => {
-              // Check if these vulnerabilities already have quarter entries for current quarter
-              const existingQuarters = await tx.vulnerabilityQuarter.findMany({
-                where: {
-                  vulnerabilityId: { in: batch },
-                  quarter,
-                },
-                select: {
-                  id: true,
-                  vulnerabilityId: true,
-                  isResolved: true,
-                },
-              });
-
-              // Create lookup map for efficient processing
-              const existingQuarterMap = new Map(
-                existingQuarters.map((q) => [q.vulnerabilityId, q]),
-              );
-
-              // Group by operation type
-              const quartersToUpdate: string[] = [];
-              const vulnIdsForNewQuarters: string[] = [];
-
-              for (const vulnId of batch) {
-                const existing = existingQuarterMap.get(vulnId);
-                if (existing) {
-                  if (!existing.isResolved) {
-                    quartersToUpdate.push(existing.id);
-                  }
-                } else {
-                  vulnIdsForNewQuarters.push(vulnId);
-                }
-              }
-
-              // Perform bulk updates where possible
-              if (quartersToUpdate.length > 0) {
-                // Update in chunks to avoid parameter limits
-                const updateChunks = chunkArray(
-                  quartersToUpdate,
-                  DB_QUERY_BATCH_SIZE,
-                );
-                for (const chunk of updateChunks) {
-                  await tx.vulnerabilityQuarter.updateMany({
-                    where: { id: { in: chunk } },
-                    data: { isResolved: true },
-                  });
-                }
-              }
-
-              // Create new quarters for those that don't have them
-              if (vulnIdsForNewQuarters.length > 0) {
-                // Create in chunks to avoid parameter limits
-                const createChunks = chunkArray(
-                  vulnIdsForNewQuarters,
-                  DB_QUERY_BATCH_SIZE,
-                );
-                for (const chunk of createChunks) {
-                  // Unfortunately, we can't use createMany with relationships
-                  // But we can use Promise.all for parallel processing
-                  await Promise.all(
-                    chunk.map((vulnId) =>
-                      tx.vulnerabilityQuarter.create({
-                        data: {
-                          vulnerabilityId: vulnId,
-                          quarter,
-                          isResolved: true,
-                          fileUploadDate,
-                        },
-                      }),
-                    ),
-                  );
-                }
-              }
-            },
-            {
-              // Improved transaction settings
-              timeout: 180000, // 3 minutes
-              maxWait: 45000, // 45 seconds
-            },
-          );
-
-          console.log(
-            `Completed unresolved batch ${i + 1}/${unresolvedBatches.length}`,
-          );
-        }
-      }
-
-      // After all processing is done, calculate the summary
-      console.log("Calculating vulnerability summary...");
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 90,
-          message: "Calculating vulnerability summary...",
-        });
-      }
-
-      await calculateVulnerabilitySummary(prisma, {
-        companyId: params.companyId,
-        quarter: quarter,
-        fileUploadDate: params.fileUploadDate,
+          ],
+        },
+        include: {
+          quarterData: {
+            orderBy: { fileUploadDate: "desc" },
+          },
+        },
+        orderBy: {
+          id: "asc", // Consistent ordering for pagination
+        },
+        take: PAGE_SIZE,
       });
 
-      console.log("Import completed successfully");
+      // Update pagination info
+      hasMore = activeVulnsBatch.length === PAGE_SIZE;
+      if (activeVulnsBatch.length > 0) {
+        lastId = activeVulnsBatch[activeVulnsBatch.length - 1].id;
+      }
+
+      console.log(
+        `Found ${activeVulnsBatch.length} active vulnerabilities in batch`,
+      );
+
+      // Filter this batch and add to our collection
+      const hashSet = new Set(allUniqueHashes);
+      const unresolvedInBatch = activeVulnsBatch.filter(
+        (vuln: Vulnerability) => !hashSet.has(vuln.uniqueHash),
+      );
+
+      unresolvedVulns.push(...unresolvedInBatch);
+      totalUnresolvedVulns += unresolvedInBatch.length;
+
+      console.log(
+        `Added ${unresolvedInBatch.length} vulnerabilities to be resolved`,
+      );
+    }
+
+    console.log(
+      `Found total of ${totalUnresolvedVulns} vulnerabilities to mark as resolved`,
+    );
+
+    // Process in batches to avoid large transactions
+    const unresolvedBatches = chunkArray(unresolvedVulns, batchSize);
+
+    // Progress calculations for unresolved batches
+    const unresolvedProgressShare = 20; // 20% of total progress for resolving old vulns
+    const unresolvedProgressPerUnit =
+      unresolvedBatches.length > 0
+        ? unresolvedProgressShare / unresolvedBatches.length
+        : unresolvedProgressShare;
+
+    for (let i = 0; i < unresolvedBatches.length; i++) {
+      const batch = unresolvedBatches[i];
+      console.log(
+        `Processing unresolved batch ${i + 1}/${
+          unresolvedBatches.length
+        } with ${batch.length} items`,
+      );
 
       if (operationId) {
         ProgressTracker.update(operationId, {
-          status: "completed",
-          progress: 100,
-          message: "Import completed successfully!",
+          progress: 70 + Math.floor(i * unresolvedProgressPerUnit),
+          message: `Resolving old vulnerabilities: batch ${i + 1} of ${
+            unresolvedBatches.length
+          }...`,
         });
       }
-    } catch (error) {
-      console.error("Error importing vulnerabilities:", error);
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          status: "error",
-          message: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-      throw error;
-    } finally {
-      await prisma.$disconnect();
+
+      await prisma.$transaction(async (tx) => {
+        // Mark these vulnerabilities as resolved for current quarter
+        for (const vuln of batch) {
+          const existingQuarter = await tx.vulnerabilityQuarter.findFirst({
+            where: {
+              vulnerabilityId: vuln.id,
+              quarter: quarter,
+            },
+          });
+
+          if (existingQuarter) {
+            if (!existingQuarter.isResolved) {
+              await tx.vulnerabilityQuarter.update({
+                where: { id: existingQuarter.id },
+                data: { isResolved: true },
+              });
+            }
+          } else {
+            await tx.vulnerabilityQuarter.create({
+              data: {
+                vulnerabilityId: vuln.id,
+                quarter,
+                isResolved: true,
+                fileUploadDate: fileUploadDate,
+              },
+            });
+          }
+        }
+      });
+
+      console.log(
+        `Completed unresolved batch ${i + 1}/${unresolvedBatches.length}`,
+      );
+    }
+
+    // After all processing is done, calculate the summary
+    console.log("Calculating vulnerability summary...");
+
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        progress: 90,
+        message: "Calculating vulnerability summary...",
+      });
+    }
+
+    await calculateVulnerabilitySummary(prisma, {
+      companyId: params.companyId,
+      quarter: quarter,
+      fileUploadDate: params.fileUploadDate,
+    });
+
+    console.log("Import completed successfully");
+
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        status: "completed",
+        progress: 100,
+        message: "Import completed successfully!",
+      });
     }
   } catch (error) {
     console.error("Error during CSV parsing:", error);
     if (operationId) {
       ProgressTracker.update(operationId, {
         status: "error",
-        message: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Error: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }

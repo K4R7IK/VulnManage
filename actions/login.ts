@@ -5,12 +5,13 @@ import { z } from "zod";
 import { LoginActionState } from "@/types/returnTypes";
 import { createSession, encrypt } from "@/lib/session";
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
 
 type User = z.infer<typeof UserWithPasswordSchema> | null;
 
 export async function loginAction(
   _prevState: any,
-  formData: FormData,
+  formData: FormData
 ): Promise<LoginActionState> {
   //Validate field
   const parseResult = LoginSchema.safeParse({
@@ -18,13 +19,18 @@ export async function loginAction(
     password: formData.get("password"),
     rememberMe: formData.get("rememberMe") !== null,
   });
-  let callbackURL = (formData.get("callbackURL") as string) || "/dashboard";
-  callbackURL = callbackURL.startsWith("/") ? callbackURL : "/dashboard";
+  let callbackURL = formData.get("callbackURL") as string;
+  if (!callbackURL || typeof callbackURL !== "string") {
+    callbackURL = "/dashboard";
+  } else {
+    // Ensure it's a valid relative path starting with /
+    callbackURL = callbackURL.startsWith("/") ? callbackURL : "/dashboard";
+  }
 
   if (!parseResult.success) {
     console.error(
       "Validation Error: ",
-      parseResult.error.flatten().fieldErrors,
+      parseResult.error.flatten().fieldErrors
     );
     return {
       errors: {
@@ -55,10 +61,7 @@ export async function loginAction(
     };
   }
 
-  const isMatch = await Bun.password.verify(
-    validateFields.password,
-    user.password,
-  );
+  const isMatch = await bcrypt.compare(validateFields.password, user.password as string);
 
   if (!isMatch) {
     return {
@@ -88,6 +91,9 @@ export async function loginAction(
         lastLogin: new Date(),
       },
     });
+    return {
+      redirectTo: callbackURL,
+    };
   } catch (_error) {
     return {
       errors: {
@@ -95,5 +101,4 @@ export async function loginAction(
       },
     };
   }
-  redirect(callbackURL);
 }

@@ -29,7 +29,8 @@ export async function decrypt(token: string) {
 
 export async function createSession(token: string, rememberMe: boolean) {
   try {
-    (await cookies()).set({
+    const cookieStore = cookies();
+    (await cookieStore).set({
       name: "token",
       value: token,
       httpOnly: true,
@@ -76,6 +77,7 @@ export async function verifySession(details: boolean = false) {
 }
 
 export async function deleteSession() {
-  (await cookies()).delete("token");
+  const cookieStore = cookies();
+  (await cookieStore).delete("token");
   redirect("/login");
 }

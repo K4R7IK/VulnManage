@@ -80,6 +80,10 @@ function createPrismaClient() {
         level: "warn",
       },
     ],
+    transactionOptions: {
+      maxWait: 10000,
+      timeout: 120000,
+    },
   });
 
   // Set up event listeners for all log types

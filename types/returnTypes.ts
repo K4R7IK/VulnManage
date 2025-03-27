@@ -3,6 +3,7 @@ export type LoginActionState = {
   errors?: {
     message?: string[];
   };
+  redirectTo?: string;
 };
 
 export type ActionsReturnTypes = {
