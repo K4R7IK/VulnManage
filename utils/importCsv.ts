@@ -73,8 +73,9 @@ function generateVulnHash(vuln: {
     recommendations: vuln.recommendations,
     companyId: vuln.companyId,
     references: [...vuln.references].sort(),
+    pluginOutput: vuln.pluginOutput ? vuln.pluginOutput.trim() : "",
   };
-  
+
   const data = JSON.stringify(normalizedData);
   return createHash("sha256").update(data).digest("hex");
 }
@@ -285,9 +286,11 @@ export async function importVulnerabilities(
 
     // Deduplicate based on hash
     const uniqueVulnDataAndHashes = Array.from(
-      new Map(vulnDataAndHashes.map(item => [item.hash, item])).values()
+      new Map(vulnDataAndHashes.map((item) => [item.hash, item])).values(),
     );
-    console.log(`Unique vulnerabilities after hash deduplication: ${uniqueVulnDataAndHashes.length}`);
+    console.log(
+      `Unique vulnerabilities after hash deduplication: ${uniqueVulnDataAndHashes.length}`,
+    );
 
     if (operationId) {
       ProgressTracker.update(operationId, {
@@ -297,7 +300,7 @@ export async function importVulnerabilities(
     }
 
     // Get all unique hashes from the import data
-    const allUniqueHashes = uniqueVulnDataAndHashes.map(v => v.hash);
+    const allUniqueHashes = uniqueVulnDataAndHashes.map((v) => v.hash);
     console.log(`Total unique vulnerabilities: ${allUniqueHashes.length}`);
 
     // Split the vulnerabilities into batches
@@ -336,13 +339,7 @@ export async function importVulnerabilities(
       }
 
       await prisma.$transaction(async (tx) => {
-        await processBatch(
-          tx,
-          batch,
-          quarter,
-          fileUploadDate,
-          null,
-        );
+        await processBatch(tx, batch, quarter, fileUploadDate, null);
       });
 
       console.log(`Completed batch ${i + 1}/${batches.length}`);
@@ -536,3 +533,4 @@ export async function importVulnerabilities(
     throw error;
   }
 }
+
