@@ -1,4 +1,4 @@
-import { PrismaClient, RiskLevel } from "@prisma/client";
+import { PrismaClient, RiskLevel, Vulnerability } from "@prisma/client";
 
 type SummaryParams = {
   companyId: number;
@@ -101,7 +101,9 @@ export async function calculateVulnerabilitySummary(
 
   while (hasMore) {
     // Get vulnerabilities for this quarter
-    const vulnerabilityBatch = await prisma.vulnerability.findMany({
+    const vulnerabilityBatch: (Vulnerability & {
+      quarterData: { quarter: string; isResolved: boolean }[];
+    })[] = await prisma.vulnerability.findMany({
       where: {
         companyId,
         id: lastId ? { gt: lastId } : undefined, // Cursor-based pagination
@@ -137,48 +139,62 @@ export async function calculateVulnerabilitySummary(
 
     // Process each vulnerability
     for (const vuln of vulnerabilityBatch) {
-      // Add to total count
-      totalCount++;
+      // Add to total count only if it's in the current quarter
+      if (vuln.quarterData.some((qd: { quarter: string }) => qd.quarter === quarter)) {
+        totalCount++;
 
-      // Keep track of IDs in current quarter
-      currentQuarterIds.add(vuln.id);
+        // Keep track of IDs in current quarter
+        currentQuarterIds.add(vuln.id);
 
-      // Categorize based on previous quarter existence
-      const existedInPrevious = previousVulnerabilityIds.has(vuln.id);
-      const isResolvedInCurrent = vuln.quarterData[0]?.isResolved || false;
+        // Get the current quarter data for this vulnerability
+        const currentQuarterData = vuln.quarterData.find(
+          (qd: { quarter: string; isResolved: boolean }) => qd.quarter === quarter
+        );
+        const isResolvedInCurrent = currentQuarterData?.isResolved || false;
 
-      // Track OS and risk data for all vulnerabilities in this quarter
-      riskSummary[vuln.riskLevel]++;
+        // Check if vulnerability existed in previous quarter
+        const existedInPrevious = previousVulnerabilityIds.has(vuln.id);
 
-      if (vuln.assetOS) {
-        osSummary[vuln.assetOS] = (osSummary[vuln.assetOS] || 0) + 1;
-      }
+        // Track OS and risk data for all vulnerabilities in this quarter
+        if (!isResolvedInCurrent) {
+          riskSummary[vuln.riskLevel as keyof RiskCount]++;
+        }
 
-      if (vuln.assetIp) {
-        deviceCount[vuln.assetIp] = (deviceCount[vuln.assetIp] || 0) + 1;
-        uniqueAssets.add(vuln.assetIp);
-      }
+        if (vuln.assetOS) {
+          osSummary[vuln.assetOS] = (osSummary[vuln.assetOS] || 0) + 1;
+        }
 
-      // Categorize as new or unresolved
-      if (!existedInPrevious && !isResolvedInCurrent) {
-        // New vulnerabilities: didn't exist in previous quarter and not resolved in current
-        newCount++;
-      } else if (existedInPrevious && !isResolvedInCurrent) {
-        // Unresolved vulnerabilities: existed in previous quarter and still not resolved
-        unresolvedCount++;
+        // Only count devices for current quarter vulnerabilities
+        if (vuln.assetIp) {
+          deviceCount[vuln.assetIp] = (deviceCount[vuln.assetIp] || 0) + 1;
+          uniqueAssets.add(vuln.assetIp);
+        }
+
+        // 2.1 Common data between db and csv should have their quarter value added
+        // These vuln will be count as unresolved if not resolved
+        if (existedInPrevious) {
+          if (!isResolvedInCurrent) {
+            // If it exists in previous quarter and is not resolved in current, count as unresolved
+            unresolvedCount++;
+          }
+        } else {
+          // 2.3 If new vuln are in csv or vuln found with latest quarter has value marked as resolved
+          // then they should either add or updated depending upon the situation and count in newCount
+          if (!isResolvedInCurrent) {
+            // If it's new and not resolved, count as new
+            newCount++;
+          }
+        }
       }
     }
   }
 
-  // For resolved count, we need to find vulnerabilities from previous quarter
-  // that either don't exist in current quarter or are marked as resolved
+  // 2.2 If the latest quarter data is only existing in the db and mark the vuln as resolved
+  // and should be counted in resolved
   if (prevQuarterData) {
     for (const prevVulnId of previousVulnerabilityIds) {
-      // If it doesn't exist in current quarter or is marked as resolved
-      const stillExists = currentQuarterIds.has(prevVulnId);
-
-      if (!stillExists) {
-        // If the vulnerability doesn't appear in current quarter, it's considered resolved
+      // If it doesn't exist in current quarter, it's considered resolved
+      if (!currentQuarterIds.has(prevVulnId)) {
         resolvedCount++;
       } else {
         // If it exists in current quarter, check if it's marked as resolved

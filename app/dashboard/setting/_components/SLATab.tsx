@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Container,
   Card,
   Title,
   Text,
   Table,
   NumberInput,
+  Stack,
   Button,
   LoadingOverlay,
   Group,
   Select,
-  Paper,
+  Container,
   Divider,
   Badge,
   SegmentedControl,
@@ -27,19 +27,11 @@ import {
   IconAlertTriangle,
 } from "@tabler/icons-react";
 import { useForm } from "@mantine/form";
+import { CompanySchema } from "@/types/schema";
+import { z } from "zod";
 
 // Define types
-interface Company {
-  id: number;
-  name: string;
-}
-
-interface FormDataStructure {
-  internet: Record<string, number>;
-  intranet: Record<string, number>;
-  endpoint: Record<string, number>;
-  [key: string]: Record<string, number>;
-}
+type Company = z.infer<typeof CompanySchema>;
 
 enum AssetType {
   Internet = "Internet",
@@ -91,7 +83,7 @@ const defaultSLAs: FormValues = {
   endpoint: { critical: 30, high: 60, medium: 90, low: 120 },
 };
 
-export default function SLAManagementPage() {
+export default function SLATab() {
   // State variables
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -132,15 +124,22 @@ export default function SLAManagementPage() {
     const fetchUserInfo = async () => {
       try {
         const res = await fetch("/api/auth/user", { credentials: "include" });
-        const data = await res.json();
         if (res.ok) {
+          const data = await res.json();
           setUserRole(data.role);
           if (data.role !== "Admin") {
             setSelectedCompanyId(data.companyId?.toString() || null);
           }
+        } else {
+          // Handle unauthorized or user not found case
+          console.error("Auth error:", res.status);
+          setUserRole("Guest"); // Set a default role
+          setLoading(false); // Ensure loading is turned off even if auth fails
         }
       } catch (error) {
         console.error("Error fetching user info:", error);
+        setUserRole("Guest"); // Set a default role on error
+        setLoading(false); // Ensure loading is turned off
       }
     };
     fetchUserInfo();
@@ -223,7 +222,6 @@ export default function SLAManagementPage() {
     };
 
     fetchSLAConfig();
-    // Remove form from the dependency array
   }, [selectedCompanyId]);
 
   // Handle form submission
@@ -337,19 +335,18 @@ export default function SLAManagementPage() {
 
   return (
     <Container fluid>
-      <Paper p="md" shadow="xs" mb="md">
-        <Title order={2} mb="md">
-          SLA Configuration
-        </Title>
-        <Text c="dimmed" mb="md">
-          Configure remediation SLAs (in days) for different risk levels and
-          asset types
-        </Text>
-
+      <Group justify="space-between">
+        <Stack>
+          <Title order={3}>SLA Configuration</Title>
+          <Text c="dimmed">
+            Configure remediation SLAs (in days) for different risk levels and
+            asset types
+          </Text>
+        </Stack>
         {/* Company selector (for admins) */}
         {userRole === "Admin" && (
           <Select
-            label="Company"
+            label="Current Company"
             placeholder="Select company"
             data={companies.map((c) => ({
               value: c.id.toString(),
@@ -361,8 +358,7 @@ export default function SLAManagementPage() {
             mb="md"
           />
         )}
-      </Paper>
-
+      </Group>
       <Card withBorder shadow="sm" pos="relative">
         <LoadingOverlay
           visible={loading || saving}

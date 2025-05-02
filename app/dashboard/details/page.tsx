@@ -489,8 +489,8 @@ export default function DetailsPage() {
         </Grid.Col>
         <Grid.Col span={1}>
           <Select
-            label="Items per page"
-            placeholder="Items per page"
+            label="Items/page"
+            placeholder="Items/page"
             value={paginationData.itemsPerPage.toString()}
             onChange={(value) =>
               setPaginationData((prev) => ({
@@ -735,7 +735,7 @@ export default function DetailsPage() {
                         }
                       }}
                     >
-                      <Table.Td>{vuln.title}</Table.Td>
+                      <Table.Td maw="300px">{vuln.title}</Table.Td>
                       <Table.Td>{vuln.assetIp}</Table.Td>
                       <Table.Td>
                         <Badge color={getRiskBadgeColor(vuln.riskLevel)}>

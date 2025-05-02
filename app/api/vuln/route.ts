@@ -1,7 +1,7 @@
 //app/api/vuln/route.ts
 import { verifyAuth } from "@/utils/verifyAuth";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Define types for the where clause
 interface WhereClause {

@@ -6,7 +6,7 @@ import os from "os";
 import { Readable } from "stream";
 import { z } from "zod";
 import { verifyAuth } from "@/utils/verifyAuth";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
 
 // Move to separate config/constants file

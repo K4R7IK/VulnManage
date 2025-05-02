@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 const SECRET_KEY = process.env.JWT_SECRET; // Ensure this is set in env
 
 export async function GET() {

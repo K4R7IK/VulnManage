@@ -16,24 +16,21 @@ import {
 import {
   IconUser,
   IconLogout,
-  IconUpload,
   IconMail,
-  IconUsers,
   IconListDetails,
   IconLayoutDashboard,
   IconHourglassEmpty,
-  IconTimeline,
   IconArrowsRightLeft,
+  IconSettings,
 } from "@tabler/icons-react";
-import { useRouter } from "next/navigation";
 import { useDisclosure } from "@mantine/hooks";
+import { deleteSession } from "@/lib/session";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure();
   const [opened, { close, open }] = useDisclosure(false);
@@ -43,11 +40,6 @@ export default function DashboardLayout({
     email: string;
     role: string;
   } | null>(null);
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    router.push("/login");
-  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -192,39 +184,19 @@ export default function DashboardLayout({
           <Stack gap={0}>
             {user?.role === "Admin" && (
               <NavLink
-                variant="subtle"
                 color="black"
-                leftSection={<IconUpload size={16} />}
+                leftSection={<IconSettings size={16} />}
                 component="a"
-                href="/dashboard/upload"
-                label="Upload Data"
-                active
-              ></NavLink>
-            )}
-            {user?.role === "Admin" && (
-              <NavLink
-                variant="subtle"
-                color="black"
-                leftSection={<IconTimeline size={16} />}
-                component="a"
-                href="/dashboard/sla"
-                label="Update SLA"
-                active
-              ></NavLink>
-            )}
-            {user?.role === "Admin" && (
-              <NavLink
-                color="black"
-                leftSection={<IconUsers size={16} />}
-                component="a"
-                href="/dashboard/users"
-                label="User Mangement"
+                href="/dashboard/setting"
+                label="Settings"
                 variant="subtle"
                 active
               ></NavLink>
             )}
             <NavLink
-              onClick={handleLogout}
+              onClick={async () => {
+                deleteSession();
+              }}
               leftSection={<IconLogout size={16} />}
               label="Logout"
               color="red"

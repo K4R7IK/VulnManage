@@ -48,3 +48,5 @@ next-env.d.ts
 # user defined
 jest.config.ts
 tests/
+tmp/*
+logs/*

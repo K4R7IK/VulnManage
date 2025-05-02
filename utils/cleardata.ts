@@ -1,5 +1,5 @@
 // utils/cleardata.ts
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export async function clearDatabase() {
   try {
@@ -20,7 +20,10 @@ export async function clearDatabase() {
 
     // console.log("Deleting User records...");
     // await prisma.user.deleteMany();
-
+    //
+    // console.log("Deleting SLA records...");
+    // await prisma.riskSLA.deleteMany();
+    //
     // console.log("Deleting Company records...");
     // await prisma.company.deleteMany();
 

@@ -1,7 +1,7 @@
 // app/api/user/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import bcrypt from "bcrypt";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 import { verifyAuth } from "@/utils/verifyAuth";
 
 // Ensure this is set in .env

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
-import prisma from "@/lib/prisma"; // Import Prisma client
+import { prisma } from "@/lib/prisma"; // Import Prisma client
 
 const JWT_SECRET = process.env.JWT_SECRET; // Ensure this is set in .env
 
@@ -40,7 +40,7 @@ export async function GET() {
     console.error("Auth Error:", error);
     return Response.json(
       { error: "Invalid or expired token" },
-      { status: 401 }
+      { status: 401 },
     );
   }
 }

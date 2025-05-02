@@ -59,11 +59,24 @@ function generateVulnHash(vuln: {
   companyId: number;
   pluginOutput: string | null;
 }): string {
-  const data = JSON.stringify({
-    ...vuln,
-    cveId: vuln.cveId.sort(),
-    references: vuln.references.sort(),
-  });
+  const normalizedData = {
+    assetOS: vuln.assetOS,
+    assetIp: vuln.assetIp,
+    port: vuln.port,
+    protocol: vuln.protocol,
+    title: vuln.title,
+    cveId: [...vuln.cveId].sort(),
+    description: vuln.description,
+    riskLevel: vuln.riskLevel,
+    cvssScore: vuln.cvssScore,
+    impact: vuln.impact,
+    recommendations: vuln.recommendations,
+    companyId: vuln.companyId,
+    references: [...vuln.references].sort(),
+    pluginOutput: vuln.pluginOutput ? vuln.pluginOutput.trim() : "",
+  };
+
+  const data = JSON.stringify(normalizedData);
   return createHash("sha256").update(data).digest("hex");
 }
 
@@ -220,6 +233,13 @@ export async function importVulnerabilities(
     operationId,
   } = params;
 
+  // Collection to track duplicates for logging later
+  const duplicateTracker = {
+    totalRows: 0,
+    noneRiskRemoved: 0,
+    duplicates: new Map<string, Array<CsvRow>>(), // Map of hash -> array of duplicate rows
+  };
+
   // Initialize progress tracking if operationId is provided
   if (operationId) {
     ProgressTracker.create(operationId);
@@ -247,333 +267,282 @@ export async function importVulnerabilities(
       throw new Error(`CSV parsing failed: ${parseResult.errors[0].message}`);
     }
 
-    // Logging Totals rows before filtering
-    console.log(`Total rows in Csv: ${parseResult.data.length}`);
-    if (operationId) {
-      ProgressTracker.update(operationId, {
-        progress: 10,
-        message: `Processing ${parseResult.data.length} rows from CSV...`,
-      });
-    }
+    // Save total rows for reporting
+    duplicateTracker.totalRows = parseResult.data.length;
 
     // Filter out rows with "None" risk level
-    const validRows = parseResult.data.filter((row) => row.Risk !== "None");
-    console.log(`Rows after remove None risk: ${validRows.length}`);
+    const rowsWithNoneRisk = parseResult.data.filter(
+      (row) => row.Risk === "None",
+    );
+    duplicateTracker.noneRiskRemoved = rowsWithNoneRisk.length;
 
-    const rowStrings = validRows.map((row) => JSON.stringify(row));
-    const uniqueRows = [...new Set(rowStrings)].map((str) => JSON.parse(str));
-    console.log(`Unique rows : ${uniqueRows.length}`);
+    const validRows = parseResult.data.filter((row) => row.Risk !== "None");
+
+    // Generate hashes for all rows first
+    const vulnDataAndHashes = validRows.map((row) => {
+      const vulnData = {
+        ...mapCsvRowToVulnerability(row, params),
+        assetOS: params.assetOS,
+      };
+      const hash = generateVulnHash(vulnData);
+      vulnData.uniqueHash = hash;
+      return { vulnData, hash, originalRow: row };
+    });
+
+    // Track the duplicates by hash
+    const hashCount = new Map<string, number>();
+
+    vulnDataAndHashes.forEach(({ hash, originalRow }) => {
+      // Count occurrences of each hash
+      hashCount.set(hash, (hashCount.get(hash) || 0) + 1);
+
+      // Add to duplicates tracker if this hash appears more than once
+      if (hashCount.get(hash)! > 1) {
+        if (!duplicateTracker.duplicates.has(hash)) {
+          // Find the first occurrence and add it to duplicates collection
+          const firstItem = vulnDataAndHashes.find(
+            (item) => item.hash === hash,
+          );
+          if (firstItem) {
+            duplicateTracker.duplicates.set(hash, [firstItem.originalRow]);
+          }
+        }
+
+        // Add this duplicate to the collection
+        duplicateTracker.duplicates.get(hash)!.push(originalRow);
+      }
+    });
+
+    // Deduplicate based on hash
+    const uniqueVulnDataAndHashes = Array.from(
+      new Map(vulnDataAndHashes.map((item) => [item.hash, item])).values(),
+    );
+
+    // Get all unique hashes from the import data
+    const allUniqueHashes = uniqueVulnDataAndHashes.map((v) => v.hash);
+
+    // Split the vulnerabilities into batches
+    const batches = chunkArray(uniqueVulnDataAndHashes, batchSize);
 
     if (operationId) {
       ProgressTracker.update(operationId, {
-        progress: 15,
-        message: `Found ${uniqueRows.length} unique vulnerabilities to process`,
+        progress: 30,
+        message: `Processing vulnerabilities in ${batches.length} batches...`,
       });
     }
 
-    if (uniqueRows.length < validRows.length) {
-      console.log(
-        `Found ${validRows.length - uniqueRows.length} duplicate rows`,
-      );
-      // Log the duplicates for inspection
-      const counts = rowStrings.reduce(
-        (acc, curr) => {
-          acc[curr] = (acc[curr] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
+    // Progress calculations
+    // Reserve 30% for initial processing, 40% for batch processing, 20% for resolving old vulns, 10% for summary
+    const batchProgressShare = 40; // 40% of total progress for processing batches
+    const batchProgressPerUnit =
+      batches.length > 0 ? batchProgressShare / batches.length : 0;
 
-      Object.entries(counts)
-        .filter(([_, count]) => count > 1)
-        .forEach(([row, count]) => {
-          console.log(`Duplicate entry found ${count} times:`, JSON.parse(row));
-        });
-    }
+    // Process each batch
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
 
-    try {
-      // Find the most recent quarter before the provided date - outside of batch processing
       if (operationId) {
         ProgressTracker.update(operationId, {
-          progress: 20,
-          message: "Finding previous quarter data...",
+          progress: 30 + Math.floor(i * batchProgressPerUnit),
+          message: `Processing batch ${i + 1} of ${batches.length}...`,
         });
       }
 
-      const previousQuarter = await prisma.vulnerabilityQuarter.findFirst({
+      await prisma.$transaction(async (tx) => {
+        await processBatch(tx, batch, quarter, fileUploadDate, null);
+      });
+    }
+
+    // After all batches are processed, handle vulnerabilities not in current CSV (Case 3)
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        progress: 70,
+        message: "Resolving old vulnerabilities...",
+      });
+    }
+
+    // Find active vulnerabilities for this company and OS in smaller batches
+    // Use a cursor-based approach to avoid loading too many records at once
+    let lastId: string | null = null;
+    let hasMore = true;
+    const PAGE_SIZE = 1000; // Process 1000 records at a time
+    const unresolvedVulns: Vulnerability[] = [];
+    let totalUnresolvedVulns = 0;
+
+    while (hasMore) {
+      const activeVulnsBatch: (Vulnerability & {
+        quarterData: {
+          id: string;
+          quarter: string;
+          isResolved: boolean;
+          fileUploadDate: Date;
+        }[];
+      })[] = await prisma.vulnerability.findMany({
         where: {
-          vulnerability: { companyId: params.companyId },
-          fileUploadDate: { lt: fileUploadDate },
-        },
-        orderBy: {
-          fileUploadDate: "desc",
-        },
-        select: {
-          fileUploadDate: true,
-          quarter: true,
-        },
-      });
-
-      // Process CSV rows and generate hashes
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 25,
-          message: "Generating vulnerability data...",
-        });
-      }
-
-      const vulnDataAndHashes = uniqueRows.map((row) => {
-        const vulnData = {
-          ...mapCsvRowToVulnerability(row, params),
-          assetOS: params.assetOS, // Ensure assetOS is not null
-        };
-        const hash = generateVulnHash(vulnData);
-        vulnData.uniqueHash = hash;
-        return { vulnData, hash };
-      });
-
-      // Get all unique hashes from the import data
-      const allUniqueHashes = [
-        ...new Set(vulnDataAndHashes.map((v) => v.hash)),
-      ];
-      console.log(`Total unique vulnerabilities: ${allUniqueHashes.length}`);
-
-      // Split the vulnerabilities into batches
-      const batches = chunkArray(vulnDataAndHashes, batchSize);
-      console.log(
-        `Processing in ${batches.length} batches of max ${batchSize} items`,
-      );
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 30,
-          message: `Processing vulnerabilities in ${batches.length} batches...`,
-        });
-      }
-
-      // Progress calculations
-      // Reserve 30% for initial processing, 40% for batch processing, 20% for resolving old vulns, 10% for summary
-      const batchProgressShare = 40; // 40% of total progress for processing batches
-      const batchProgressPerUnit =
-        batches.length > 0 ? batchProgressShare / batches.length : 0;
-
-      // Process each batch
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        console.log(
-          `Processing batch ${i + 1}/${batches.length} with ${
-            batch.length
-          } items`,
-        );
-
-        if (operationId) {
-          ProgressTracker.update(operationId, {
-            progress: 30 + Math.floor(i * batchProgressPerUnit),
-            message: `Processing batch ${i + 1} of ${batches.length}...`,
-          });
-        }
-
-        await prisma.$transaction(async (tx) => {
-          await processBatch(
-            tx,
-            batch,
-            quarter,
-            fileUploadDate,
-            previousQuarter,
-          );
-        });
-
-        console.log(`Completed batch ${i + 1}/${batches.length}`);
-      }
-
-      // After all batches are processed, handle vulnerabilities not in current CSV (Case 3)
-      console.log("Processing vulnerabilities not in current CSV...");
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 70,
-          message: "Resolving old vulnerabilities...",
-        });
-      }
-
-      // Process just the current OS type
-      console.log(`Processing OS: ${params.assetOS}`);
-
-      // Find active vulnerabilities for this company and OS in smaller batches
-      // Use a cursor-based approach to avoid loading too many records at once
-      let lastId: string | null = null;
-      let hasMore = true;
-      const PAGE_SIZE = 1000; // Process 1000 records at a time
-      const unresolvedVulns: any[] = [];
-      let totalUnresolvedVulns = 0;
-
-      while (hasMore) {
-        const activeVulnsBatch = await prisma.vulnerability.findMany({
-          where: {
-            AND: [
-              { companyId: params.companyId },
-              { assetOS: params.assetOS },
-              lastId ? { id: { gt: lastId } } : {}, // Cursor pagination
-              {
-                quarterData: {
-                  some: {
-                    AND: [
-                      previousQuarter
-                        ? {
-                            quarter: previousQuarter.quarter,
-                            isResolved: false,
-                          }
-                        : {
-                            isResolved: false,
-                          },
-                    ],
-                  },
+          AND: [
+            { companyId: params.companyId },
+            { assetOS: params.assetOS },
+            lastId ? { id: { gt: lastId } } : {}, // Cursor pagination
+            {
+              quarterData: {
+                some: {
+                  AND: [
+                    {
+                      isResolved: false,
+                    },
+                  ],
                 },
               },
-            ],
-          },
-          include: {
-            quarterData: {
-              where: previousQuarter
-                ? {
-                    OR: [{ quarter: previousQuarter.quarter }, { quarter }],
-                  }
-                : undefined,
-              orderBy: { fileUploadDate: "desc" },
             },
+          ],
+        },
+        include: {
+          quarterData: {
+            orderBy: { fileUploadDate: "desc" },
           },
-          orderBy: {
-            id: "asc", // Consistent ordering for pagination
-          },
-          take: PAGE_SIZE,
-        });
-
-        // Update pagination info
-        hasMore = activeVulnsBatch.length === PAGE_SIZE;
-        if (activeVulnsBatch.length > 0) {
-          lastId = activeVulnsBatch[activeVulnsBatch.length - 1].id;
-        }
-
-        console.log(
-          `Found ${activeVulnsBatch.length} active vulnerabilities in batch`,
-        );
-
-        // Filter this batch and add to our collection
-        const hashSet = new Set(allUniqueHashes);
-        const unresolvedInBatch = activeVulnsBatch.filter(
-          (vuln) => !hashSet.has(vuln.uniqueHash),
-        );
-
-        unresolvedVulns.push(...unresolvedInBatch);
-        totalUnresolvedVulns += unresolvedInBatch.length;
-
-        console.log(
-          `Added ${unresolvedInBatch.length} vulnerabilities to be resolved`,
-        );
-      }
-
-      console.log(
-        `Found total of ${totalUnresolvedVulns} vulnerabilities to mark as resolved`,
-      );
-
-      // Process in batches to avoid large transactions
-      const unresolvedBatches = chunkArray(unresolvedVulns, batchSize);
-
-      // Progress calculations for unresolved batches
-      const unresolvedProgressShare = 20; // 20% of total progress for resolving old vulns
-      const unresolvedProgressPerUnit =
-        unresolvedBatches.length > 0
-          ? unresolvedProgressShare / unresolvedBatches.length
-          : unresolvedProgressShare;
-
-      for (let i = 0; i < unresolvedBatches.length; i++) {
-        const batch = unresolvedBatches[i];
-        console.log(
-          `Processing unresolved batch ${i + 1}/${
-            unresolvedBatches.length
-          } with ${batch.length} items`,
-        );
-
-        if (operationId) {
-          ProgressTracker.update(operationId, {
-            progress: 70 + Math.floor(i * unresolvedProgressPerUnit),
-            message: `Resolving old vulnerabilities: batch ${i + 1} of ${
-              unresolvedBatches.length
-            }...`,
-          });
-        }
-
-        await prisma.$transaction(async (tx) => {
-          // Mark these vulnerabilities as resolved for current quarter
-          for (const vuln of batch) {
-            const existingQuarter = vuln.quarterData.find(
-              (q) => q.quarter === quarter,
-            );
-
-            if (existingQuarter) {
-              if (!existingQuarter.isResolved) {
-                await tx.vulnerabilityQuarter.update({
-                  where: { id: existingQuarter.id },
-                  data: { isResolved: true },
-                });
-              }
-            } else {
-              await tx.vulnerabilityQuarter.create({
-                data: {
-                  vulnerabilityId: vuln.id,
-                  quarter,
-                  isResolved: true,
-                  fileUploadDate: fileUploadDate,
-                },
-              });
-            }
-          }
-        });
-
-        console.log(
-          `Completed unresolved batch ${i + 1}/${unresolvedBatches.length}`,
-        );
-      }
-
-      // After all processing is done, calculate the summary
-      console.log("Calculating vulnerability summary...");
-
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          progress: 90,
-          message: "Calculating vulnerability summary...",
-        });
-      }
-
-      await calculateVulnerabilitySummary(prisma, {
-        companyId: params.companyId,
-        quarter: quarter,
-        fileUploadDate: params.fileUploadDate,
+        },
+        orderBy: {
+          id: "asc", // Consistent ordering for pagination
+        },
+        take: PAGE_SIZE,
       });
 
-      console.log("Import completed successfully");
+      // Update pagination info
+      hasMore = activeVulnsBatch.length === PAGE_SIZE;
+      if (activeVulnsBatch.length > 0) {
+        lastId = activeVulnsBatch[activeVulnsBatch.length - 1].id;
+      }
+
+      // Filter this batch and add to our collection
+      const hashSet = new Set(allUniqueHashes);
+      const unresolvedInBatch = activeVulnsBatch.filter(
+        (vuln: Vulnerability) => !hashSet.has(vuln.uniqueHash),
+      );
+
+      unresolvedVulns.push(...unresolvedInBatch);
+      totalUnresolvedVulns += unresolvedInBatch.length;
+    }
+
+    // Process in batches to avoid large transactions
+    const unresolvedBatches = chunkArray(unresolvedVulns, batchSize);
+
+    // Progress calculations for unresolved batches
+    const unresolvedProgressShare = 20; // 20% of total progress for resolving old vulns
+    const unresolvedProgressPerUnit =
+      unresolvedBatches.length > 0
+        ? unresolvedProgressShare / unresolvedBatches.length
+        : unresolvedProgressShare;
+
+    for (let i = 0; i < unresolvedBatches.length; i++) {
+      const batch = unresolvedBatches[i];
 
       if (operationId) {
         ProgressTracker.update(operationId, {
-          status: "completed",
-          progress: 100,
-          message: "Import completed successfully!",
+          progress: 70 + Math.floor(i * unresolvedProgressPerUnit),
+          message: `Resolving old vulnerabilities: batch ${i + 1} of ${
+            unresolvedBatches.length
+          }...`,
         });
       }
-    } catch (error) {
-      console.error("Error importing vulnerabilities:", error);
-      if (operationId) {
-        ProgressTracker.update(operationId, {
-          status: "error",
-          message: `Error: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-      throw error;
-    } finally {
-      await prisma.$disconnect();
+
+      await prisma.$transaction(async (tx) => {
+        // Mark these vulnerabilities as resolved for current quarter
+        for (const vuln of batch) {
+          const existingQuarter = await tx.vulnerabilityQuarter.findFirst({
+            where: {
+              vulnerabilityId: vuln.id,
+              quarter: quarter,
+            },
+          });
+
+          if (existingQuarter) {
+            if (!existingQuarter.isResolved) {
+              await tx.vulnerabilityQuarter.update({
+                where: { id: existingQuarter.id },
+                data: { isResolved: true },
+              });
+            }
+          } else {
+            await tx.vulnerabilityQuarter.create({
+              data: {
+                vulnerabilityId: vuln.id,
+                quarter,
+                isResolved: true,
+                fileUploadDate: fileUploadDate,
+              },
+            });
+          }
+        }
+      });
+    }
+
+    // After all processing is done, calculate the summary
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        progress: 90,
+        message: "Calculating vulnerability summary...",
+      });
+    }
+
+    await calculateVulnerabilitySummary(prisma, {
+      companyId: params.companyId,
+      quarter: quarter,
+      fileUploadDate: params.fileUploadDate,
+    });
+
+    // Now that all processing is complete, log the duplicate information
+    console.log("=== CSV IMPORT SUMMARY ===");
+    console.log(`Total rows in CSV: ${duplicateTracker.totalRows}`);
+    console.log(
+      `'None' risk rows removed: ${duplicateTracker.noneRiskRemoved}`,
+    );
+
+    const totalDuplicates =
+      Array.from(duplicateTracker.duplicates.values()).reduce(
+        (sum, arr) => sum + arr.length,
+        0,
+      ) - duplicateTracker.duplicates.size;
+
+    console.log(`Duplicate rows removed: ${totalDuplicates}`);
+    console.log(
+      `Unique vulnerabilities processed: ${uniqueVulnDataAndHashes.length}`,
+    );
+    console.log(`Vulnerabilities marked as resolved: ${totalUnresolvedVulns}`);
+
+    if (duplicateTracker.duplicates.size > 0) {
+      console.log("\n=== DUPLICATE DETAILS ===");
+      let duplicateCount = 1;
+
+      duplicateTracker.duplicates.forEach((rows, hash) => {
+        console.log(
+          `\nDuplicate Group #${duplicateCount++} (${rows.length} occurrences):`,
+        );
+        console.log("First occurrence kept:");
+        console.log(`  Title: ${rows[0].Name}`);
+        console.log(`  Host: ${rows[0].Host}`);
+        console.log(`  Port: ${rows[0].Port}`);
+        console.log(`  Risk: ${rows[0].Risk}`);
+
+        if (rows.length > 1) {
+          console.log("Duplicate entries removed:");
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            console.log(
+              `  ${i}: Title: ${row.Name}, Host: ${row.Host}, Port: ${row.Port}, Risk: ${row.Risk}`,
+            );
+          }
+        }
+      });
+    }
+
+    console.log("\n=== IMPORT COMPLETED SUCCESSFULLY ===");
+
+    if (operationId) {
+      ProgressTracker.update(operationId, {
+        status: "completed",
+        progress: 100,
+        message: "Import completed successfully!",
+      });
     }
   } catch (error) {
     console.error("Error during CSV parsing:", error);
