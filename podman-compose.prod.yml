@@ -22,7 +22,7 @@ services:
       - app-network
 
   app:
-    image: ghcr.io/k4r7ik/vuln-tracker:1.0
+    image: ghcr.io/k4r7ik/vuln-tracker:1.1
     container_name: vuln-tracker-app
     restart: always
     ports:

@@ -233,6 +233,13 @@ export async function importVulnerabilities(
     operationId,
   } = params;
 
+  // Collection to track duplicates for logging later
+  const duplicateTracker = {
+    totalRows: 0,
+    noneRiskRemoved: 0,
+    duplicates: new Map<string, Array<CsvRow>>(), // Map of hash -> array of duplicate rows
+  };
+
   // Initialize progress tracking if operationId is provided
   if (operationId) {
     ProgressTracker.create(operationId);
@@ -260,18 +267,16 @@ export async function importVulnerabilities(
       throw new Error(`CSV parsing failed: ${parseResult.errors[0].message}`);
     }
 
-    // Logging Totals rows before filtering
-    console.log(`Total rows in Csv: ${parseResult.data.length}`);
-    if (operationId) {
-      ProgressTracker.update(operationId, {
-        progress: 10,
-        message: `Processing ${parseResult.data.length} rows from CSV...`,
-      });
-    }
+    // Save total rows for reporting
+    duplicateTracker.totalRows = parseResult.data.length;
 
     // Filter out rows with "None" risk level
+    const rowsWithNoneRisk = parseResult.data.filter(
+      (row) => row.Risk === "None",
+    );
+    duplicateTracker.noneRiskRemoved = rowsWithNoneRisk.length;
+
     const validRows = parseResult.data.filter((row) => row.Risk !== "None");
-    console.log(`Rows after remove None risk: ${validRows.length}`);
 
     // Generate hashes for all rows first
     const vulnDataAndHashes = validRows.map((row) => {
@@ -281,33 +286,43 @@ export async function importVulnerabilities(
       };
       const hash = generateVulnHash(vulnData);
       vulnData.uniqueHash = hash;
-      return { vulnData, hash };
+      return { vulnData, hash, originalRow: row };
+    });
+
+    // Track the duplicates by hash
+    const hashCount = new Map<string, number>();
+
+    vulnDataAndHashes.forEach(({ hash, originalRow }) => {
+      // Count occurrences of each hash
+      hashCount.set(hash, (hashCount.get(hash) || 0) + 1);
+
+      // Add to duplicates tracker if this hash appears more than once
+      if (hashCount.get(hash)! > 1) {
+        if (!duplicateTracker.duplicates.has(hash)) {
+          // Find the first occurrence and add it to duplicates collection
+          const firstItem = vulnDataAndHashes.find(
+            (item) => item.hash === hash,
+          );
+          if (firstItem) {
+            duplicateTracker.duplicates.set(hash, [firstItem.originalRow]);
+          }
+        }
+
+        // Add this duplicate to the collection
+        duplicateTracker.duplicates.get(hash)!.push(originalRow);
+      }
     });
 
     // Deduplicate based on hash
     const uniqueVulnDataAndHashes = Array.from(
       new Map(vulnDataAndHashes.map((item) => [item.hash, item])).values(),
     );
-    console.log(
-      `Unique vulnerabilities after hash deduplication: ${uniqueVulnDataAndHashes.length}`,
-    );
-
-    if (operationId) {
-      ProgressTracker.update(operationId, {
-        progress: 15,
-        message: `Found ${uniqueVulnDataAndHashes.length} unique vulnerabilities to process`,
-      });
-    }
 
     // Get all unique hashes from the import data
     const allUniqueHashes = uniqueVulnDataAndHashes.map((v) => v.hash);
-    console.log(`Total unique vulnerabilities: ${allUniqueHashes.length}`);
 
     // Split the vulnerabilities into batches
     const batches = chunkArray(uniqueVulnDataAndHashes, batchSize);
-    console.log(
-      `Processing in ${batches.length} batches of max ${batchSize} items`,
-    );
 
     if (operationId) {
       ProgressTracker.update(operationId, {
@@ -325,11 +340,6 @@ export async function importVulnerabilities(
     // Process each batch
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      console.log(
-        `Processing batch ${i + 1}/${batches.length} with ${
-          batch.length
-        } items`,
-      );
 
       if (operationId) {
         ProgressTracker.update(operationId, {
@@ -341,22 +351,15 @@ export async function importVulnerabilities(
       await prisma.$transaction(async (tx) => {
         await processBatch(tx, batch, quarter, fileUploadDate, null);
       });
-
-      console.log(`Completed batch ${i + 1}/${batches.length}`);
     }
 
     // After all batches are processed, handle vulnerabilities not in current CSV (Case 3)
-    console.log("Processing vulnerabilities not in current CSV...");
-
     if (operationId) {
       ProgressTracker.update(operationId, {
         progress: 70,
         message: "Resolving old vulnerabilities...",
       });
     }
-
-    // Process just the current OS type
-    console.log(`Processing OS: ${params.assetOS}`);
 
     // Find active vulnerabilities for this company and OS in smaller batches
     // Use a cursor-based approach to avoid loading too many records at once
@@ -410,10 +413,6 @@ export async function importVulnerabilities(
         lastId = activeVulnsBatch[activeVulnsBatch.length - 1].id;
       }
 
-      console.log(
-        `Found ${activeVulnsBatch.length} active vulnerabilities in batch`,
-      );
-
       // Filter this batch and add to our collection
       const hashSet = new Set(allUniqueHashes);
       const unresolvedInBatch = activeVulnsBatch.filter(
@@ -422,15 +421,7 @@ export async function importVulnerabilities(
 
       unresolvedVulns.push(...unresolvedInBatch);
       totalUnresolvedVulns += unresolvedInBatch.length;
-
-      console.log(
-        `Added ${unresolvedInBatch.length} vulnerabilities to be resolved`,
-      );
     }
-
-    console.log(
-      `Found total of ${totalUnresolvedVulns} vulnerabilities to mark as resolved`,
-    );
 
     // Process in batches to avoid large transactions
     const unresolvedBatches = chunkArray(unresolvedVulns, batchSize);
@@ -444,11 +435,6 @@ export async function importVulnerabilities(
 
     for (let i = 0; i < unresolvedBatches.length; i++) {
       const batch = unresolvedBatches[i];
-      console.log(
-        `Processing unresolved batch ${i + 1}/${
-          unresolvedBatches.length
-        } with ${batch.length} items`,
-      );
 
       if (operationId) {
         ProgressTracker.update(operationId, {
@@ -488,15 +474,9 @@ export async function importVulnerabilities(
           }
         }
       });
-
-      console.log(
-        `Completed unresolved batch ${i + 1}/${unresolvedBatches.length}`,
-      );
     }
 
     // After all processing is done, calculate the summary
-    console.log("Calculating vulnerability summary...");
-
     if (operationId) {
       ProgressTracker.update(operationId, {
         progress: 90,
@@ -510,7 +490,52 @@ export async function importVulnerabilities(
       fileUploadDate: params.fileUploadDate,
     });
 
-    console.log("Import completed successfully");
+    // Now that all processing is complete, log the duplicate information
+    console.log("=== CSV IMPORT SUMMARY ===");
+    console.log(`Total rows in CSV: ${duplicateTracker.totalRows}`);
+    console.log(
+      `'None' risk rows removed: ${duplicateTracker.noneRiskRemoved}`,
+    );
+
+    const totalDuplicates =
+      Array.from(duplicateTracker.duplicates.values()).reduce(
+        (sum, arr) => sum + arr.length,
+        0,
+      ) - duplicateTracker.duplicates.size;
+
+    console.log(`Duplicate rows removed: ${totalDuplicates}`);
+    console.log(
+      `Unique vulnerabilities processed: ${uniqueVulnDataAndHashes.length}`,
+    );
+    console.log(`Vulnerabilities marked as resolved: ${totalUnresolvedVulns}`);
+
+    if (duplicateTracker.duplicates.size > 0) {
+      console.log("\n=== DUPLICATE DETAILS ===");
+      let duplicateCount = 1;
+
+      duplicateTracker.duplicates.forEach((rows, hash) => {
+        console.log(
+          `\nDuplicate Group #${duplicateCount++} (${rows.length} occurrences):`,
+        );
+        console.log("First occurrence kept:");
+        console.log(`  Title: ${rows[0].Name}`);
+        console.log(`  Host: ${rows[0].Host}`);
+        console.log(`  Port: ${rows[0].Port}`);
+        console.log(`  Risk: ${rows[0].Risk}`);
+
+        if (rows.length > 1) {
+          console.log("Duplicate entries removed:");
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            console.log(
+              `  ${i}: Title: ${row.Name}, Host: ${row.Host}, Port: ${row.Port}, Risk: ${row.Risk}`,
+            );
+          }
+        }
+      });
+    }
+
+    console.log("\n=== IMPORT COMPLETED SUCCESSFULLY ===");
 
     if (operationId) {
       ProgressTracker.update(operationId, {
@@ -533,4 +558,3 @@ export async function importVulnerabilities(
     throw error;
   }
 }
-
