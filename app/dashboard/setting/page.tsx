@@ -19,6 +19,7 @@ import {
   IconRuler,
   IconAlertCircle,
   IconSettings,
+  IconBuilding, // Import IconBuilding
 } from "@tabler/icons-react";
 import dynamic from "next/dynamic";
 import { verifySession } from "@/lib/session";
@@ -27,6 +28,12 @@ import { z } from "zod";
 
 const UserManagementTab = dynamic(
   () => import("@/app/dashboard/setting/_components/UserManagementTab"),
+  { loading: () => <Loader /> },
+);
+
+// Import CompanyManagementTab
+const CompanyManagementTab = dynamic(
+  () => import("@/app/dashboard/setting/_components/CompanyManagementTab"),
   { loading: () => <Loader /> },
 );
 
@@ -128,11 +135,20 @@ export default function SettingsPage() {
           <Tabs.Tab value="sla" leftSection={<IconRuler size={16} />}>
             SLA Configuration
           </Tabs.Tab>
+          {/* Add new Tab for Company Management */}
+          <Tabs.Tab value="company" leftSection={<IconBuilding size={16} />}>
+            Company Management
+          </Tabs.Tab>
         </Tabs.List>
 
         <Box pt="md">
           <Tabs.Panel value="user-management">
             <UserManagementTab user={user} />
+          </Tabs.Panel>
+
+          {/* Add new Panel for Company Management */}
+          <Tabs.Panel value="company" pt="xs">
+            <CompanyManagementTab user={user} />
           </Tabs.Panel>
 
           <Tabs.Panel value="upload">
