@@ -52,16 +52,18 @@ export const UpdateUserSchema = UserWithPasswordSchema;
 
 export const CompanySchema = z.object({
   id: z.number().positive(),
-  name: z.string().trim(),
+  name: z.string().trim().min(1, "Company name cannot be empty"), // Added min length validation
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
 });
 
 export const CreateCompanySchema = CompanySchema.pick({
-  name: true,
+  name: true, // Will inherit the min(1) validation from CompanySchema.name
 });
 
 export const UpdateCompanySchema = CompanySchema.pick({
-  id: true,
-  name: true,
+  id: true, // id is a positive number
+  name: true, // name is a non-empty string
 });
 
 export const DeleteCompanySchema = CompanySchema.pick({

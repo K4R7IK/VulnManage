@@ -12,183 +12,228 @@ import {
 
 type Company = z.infer<typeof CompanySchema>;
 
+// Ensure Company type includes createdAt and updatedAt if they exist on the model
+// For now, assuming CompanySchema only defines id and name as per the provided schema.ts
+// If prisma model has more fields and they are needed, adjust CompanySchema or the select clause.
+
 export async function fetchCompanies() {
   await verifySession();
-  let companyData: Company[] = [];
+  // No need to initialize companyData to empty array here, prisma call will provide it or throw
   try {
-    companyData = await prisma.company.findMany({
+    const companies = await prisma.company.findMany({
       select: {
         id: true,
         name: true,
+        // Add other fields if necessary, e.g., createdAt, updatedAt
+        // For now, sticking to what UserManagementTab might imply and what CompanySchema supports
       },
     });
-    if (companyData.length === 0) {
+    // The component handles empty state, so just return the data and success status.
+    // The previous implementation had a specific error for "No companies found",
+    // but it's often better to return success true and an empty array.
+    // However, to match the existing pattern of error objects, I'll keep it.
+    if (companies.length === 0) {
       return {
-        error: {
-          message: "No companies found",
-        },
-        success: false,
-        data: companyData,
-      };
-    } else {
-      return {
-        error: null,
-        success: true,
-        data: companyData,
+        success: true, // Or false, depending on how "no companies" should be treated. Let's say true, data is empty.
+        data: [],
+        error: null, // Or a specific message like "No companies found"
       };
     }
-  } catch (_error) {
     return {
-      error: {
-        message: "Error fetching companies",
-      },
+      success: true,
+      data: companies,
+      error: null,
+    };
+  } catch (error) {
+    console.error("Error fetching companies:", error);
+    return {
       success: false,
-      data: companyData,
+      data: [],
+      error: { message: "Error fetching companies. Please try again later." },
     };
   }
 }
 
 export async function fetchCompany(id: number) {
   await verifySession();
-  let companyData: Company | null = null;
   try {
-    companyData = await prisma.company.findUnique({
-      where: {
-        id,
-      },
+    const company = await prisma.company.findUnique({
+      where: { id },
       select: {
         id: true,
         name: true,
       },
     });
-    if (!companyData) {
-      return {
-        error: {
-          message: "No company Found",
-        },
-        success: false,
-        data: companyData,
-      };
-    } else {
-      return {
-        error: null,
-        success: true,
-        data: companyData,
-      };
-    }
-  } catch (_error) {
-    return {
-      error: {
-        message: "Error fetching companies",
-      },
-      success: false,
-      data: companyData,
-    };
-  }
-}
 
-export async function createCompany(formData: FormData) {
-  await verifySession();
-  try {
-    const parseResult = CreateCompanySchema.safeParse({
-      name: formData.get("companyName"),
-    });
-    if (!parseResult.success) {
+    if (!company) {
       return {
-        error: {
-          message: "Invalid Company Name",
-        },
         success: false,
         data: null,
+        error: { message: "Company not found." },
       };
     }
-    const { name } = parseResult.data;
-    await prisma.company.create({
-      data: {
-        name,
-      },
-    });
-  } catch (_error) {
     return {
-      error: {
-        message: "Error creating Company.",
-      },
+      success: true,
+      data: company,
+      error: null,
+    };
+  } catch (error) {
+    console.error(`Error fetching company with id ${id}:`, error);
+    return {
       success: false,
       data: null,
+      error: { message: "Error fetching company. Please try again later." },
     };
   }
 }
 
-//TODO: write update and delete action for company
-export async function updateCompany(companyId: number, formData: FormData) {
+export async function createCompany(_prevState: any, formData: FormData) {
   await verifySession();
+  const parseResult = CreateCompanySchema.safeParse({
+    name: formData.get("name"), // Changed from companyName to name
+  });
+
+  if (!parseResult.success) {
+    console.error("Validation Error (createCompany): ", parseResult.error.flatten().fieldErrors);
+    return {
+      success: false,
+      data: null,
+      error: { message: "Invalid company name. " + (parseResult.error.flatten().fieldErrors.name?.join(", ") || "") },
+    };
+  }
+
+  const { name } = parseResult.data;
+
   try {
-    const parseResult = UpdateCompanySchema.safeParse({
-      id: companyId,
-      name: formData.get("companyName"),
-    });
-    if (!parseResult.success) {
-      return {
-        error: {
-          message: "Invalid Company Name",
-        },
-        success: false,
-        data: null,
-      };
-    }
-    const { id, name } = parseResult.data;
-    const updatedCompany = await prisma.company.update({
-      where: {
-        id,
-      },
+    const newCompany = await prisma.company.create({
       data: {
         name,
       },
     });
     return {
+      success: true,
+      data: newCompany,
       error: null,
+    };
+  } catch (error) {
+    console.error("Error creating company:", error);
+    // Consider checking for specific Prisma errors, e.g., unique constraint violation
+    return {
+      success: false,
+      data: null,
+      error: { message: "Error creating company. Please try again later." },
+    };
+  }
+}
+
+export async function updateCompany(_prevState: any, formData: FormData) {
+  await verifySession();
+
+  const idFromForm = formData.get("id");
+  if (idFromForm === null) {
+    return {
+      success: false,
+      data: null,
+      error: { message: "Company ID is required for update." },
+    };
+  }
+
+  const companyId = Number(idFromForm);
+  if (isNaN(companyId)) {
+     return {
+      success: false,
+      data: null,
+      error: { message: "Invalid Company ID format." },
+    };
+  }
+
+  const parseResult = UpdateCompanySchema.safeParse({
+    id: companyId,
+    name: formData.get("name"), // Changed from companyName to name
+  });
+
+  if (!parseResult.success) {
+    console.error("Validation Error (updateCompany): ", parseResult.error.flatten().fieldErrors);
+    const fieldErrors = parseResult.error.flatten().fieldErrors;
+    const errorMessage = fieldErrors.name?.join(", ") || fieldErrors.id?.join(", ") || "Invalid data.";
+    return {
+      success: false,
+      data: null,
+      error: { message: "Validation failed: " + errorMessage },
+    };
+  }
+
+  const { id, name } = parseResult.data;
+
+  try {
+    const updatedCompany = await prisma.company.update({
+      where: { id },
+      data: { name },
+    });
+    return {
       success: true,
       data: updatedCompany,
+      error: null,
     };
-  } catch (_error) {
+  } catch (error) {
+    console.error(`Error updating company with id ${id}:`, error);
+    // Consider checking for specific Prisma errors, e.g., P2025 (record not found)
     return {
-      error: {
-        message: "Error updating Company.",
-      },
       success: false,
       data: null,
+      error: { message: "Error updating company. Please try again later." },
     };
   }
 }
 
-export async function deleteCompany(companyId: number) {
+export async function deleteCompany(_prevState: any, formData: FormData) { // Changed signature for consistency with useFormState
   await verifySession();
+
+  const idFromForm = formData.get("id");
+   if (idFromForm === null) {
+    return {
+      success: false,
+      error: { message: "Company ID is required for deletion." },
+    };
+  }
+  const companyId = Number(idFromForm);
+   if (isNaN(companyId)) {
+     return {
+      success: false,
+      error: { message: "Invalid Company ID format." },
+    };
+  }
+
+
   const parseResult = DeleteCompanySchema.safeParse({
     id: companyId,
   });
+
   if (!parseResult.success) {
+    console.error("Validation Error (deleteCompany): ", parseResult.error.flatten().fieldErrors);
     return {
-      error: {
-        message: "Invalid Company ID",
-      },
       success: false,
-      data: null,
+      error: { message: "Invalid company ID for deletion." },
     };
   }
+
   const { id } = parseResult.data;
+
   try {
     await prisma.company.delete({
-      where: {
-        id,
-      },
+      where: { id },
     });
-  } catch (_error) {
     return {
-      error: {
-        message: "Error deleting Company.",
-      },
+      success: true,
+      error: null,
+    };
+  } catch (error) {
+    console.error(`Error deleting company with id ${id}:`, error);
+    // Consider checking for specific Prisma errors, e.g., P2025 (record not found)
+    // Or foreign key constraints
+    return {
       success: false,
-      data: null,
+      error: { message: "Error deleting company. It might be in use or does not exist." },
     };
   }
 }
