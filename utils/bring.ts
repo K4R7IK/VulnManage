@@ -12,7 +12,7 @@ async function getAllVulnerabilities() {
             equals: 80,
           },
           assetIp: {
-            equals: "hos.nayaraenergy.com",
+            equals: "hos.client1.com",
           },
           protocol: {
             equals: "tcp",
